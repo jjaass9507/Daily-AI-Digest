@@ -394,9 +394,10 @@ function C_Label({ children }) {
   );
 }
 
-function V3App({ themeMode = "dark", typeScale = 1, data = C_DATA }) {
+function V3App({ themeMode = "dark", typeScale = 1 }) {
   // This variation is intentionally always-dark — Apple Intelligence is a dark-canvas aesthetic.
   // We still respond to theme so the design canvas Tweak feels consistent.
+  const data = C_DATA;
   const [filter, setFilter] = React.useState({ kind: "all", value: null });
   const [open, setOpen] = React.useState(null);
   const [query, setQuery] = React.useState("");

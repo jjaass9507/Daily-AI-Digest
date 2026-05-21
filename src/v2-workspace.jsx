@@ -218,7 +218,8 @@ const B_GHOST_BTN = {
   fontFamily: "var(--b-sans)",
 };
 
-function V2App({ themeMode = "light", typeScale = 1, data = B_DATA }) {
+function V2App({ themeMode = "light", typeScale = 1 }) {
+  const data = B_DATA;
   const totalNewStars = data.picks.reduce((s, p) => s + p.starsToday, 0);
 
   return (

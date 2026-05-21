@@ -12,12 +12,10 @@
     --a-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "PingFang TC", "Noto Sans TC", sans-serif;
     --a-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter", "PingFang TC", "Noto Sans TC", sans-serif;
     --a-mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace;
-    --b-sans: var(--a-sans); --b-display: var(--a-display); --b-mono: var(--a-mono);
-    --c-sans: var(--a-sans); --c-display: var(--a-display); --c-mono: var(--a-mono);
   }
   html, body, #root { height: 100%; margin: 0; padding: 0; }
   body {
-    background: #1d1d1f;
+    background: #000;
     font-family: var(--a-sans);
     color: #1d1d1f;
     -webkit-font-smoothing: antialiased;
@@ -25,9 +23,8 @@
     text-rendering: optimizeLegibility;
   }
   * { box-sizing: border-box; }
-  button { font-family: inherit; }
-  input  { font-family: inherit; }
-  pre    { white-space: pre; }
+  button, input { font-family: inherit; }
+  pre { white-space: pre; }
 
   /* Loading / error overlay */
   #digest-overlay {
@@ -62,20 +59,6 @@
   }
   .overlay-btn.primary { background: white; color: black; }
   .overlay-btn.ghost   { background: rgba(255,255,255,0.10); color: white; }
-
-  /* Standalone tweaks toggle */
-  #tweaks-toggle {
-    position: fixed; right: 16px; bottom: 16px; z-index: 2147483645;
-    padding: 8px 16px; border-radius: 999px;
-    background: rgba(255,255,255,0.15); color: white;
-    border: 0.5px solid rgba(255,255,255,0.3);
-    font-size: 13px; font-weight: 600; cursor: pointer;
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
-    transition: background 150ms;
-  }
-  #tweaks-toggle:hover { background: rgba(255,255,255,0.25); }
 </style>
 
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
@@ -84,15 +67,10 @@
 
 <script src="src/data.js"></script>
 <script src="src/github-api.js"></script>
-<script type="text/babel" src="design-canvas.jsx"></script>
-<script type="text/babel" src="tweaks-panel.jsx"></script>
 <script type="text/babel" src="src/v1-magazine.jsx"></script>
-<script type="text/babel" src="src/v2-workspace.jsx"></script>
-<script type="text/babel" src="src/v3-reader.jsx"></script>
 </head>
 <body>
 
-<!-- Loading / error overlay (controlled by React) -->
 <div id="digest-overlay">
   <div class="overlay-ring"></div>
   <div class="overlay-text">正在從 GitHub 抓取今日精選…</div>
@@ -100,19 +78,12 @@
 </div>
 
 <div id="root"></div>
-<button id="tweaks-toggle" title="切換 Tweaks 面板">⚙ Tweaks</button>
 
 <script type="text/babel">
 const { useState, useEffect, useCallback } = React;
 
 const TOKEN_KEY = "digest-gh-token";
 
-const DEFAULTS = /*EDITMODE-BEGIN*/{
-  "theme": "light",
-  "typeScale": 1
-}/*EDITMODE-END*/;
-
-// ── Overlay helpers ──────────────────────────────────────────────────────────
 function showOverlay(html) {
   const el = document.getElementById("digest-overlay");
   el.innerHTML = html;
@@ -124,12 +95,10 @@ function hideOverlay() {
   setTimeout(() => { el.style.display = "none"; }, 450);
 }
 
-// ── App ──────────────────────────────────────────────────────────────────────
 function App() {
-  const [tweaks, setTweak]   = useTweaks(DEFAULTS);
-  const [digest, setDigest]  = useState(null);   // live GitHub data
-  const [token, setToken]    = useState(() => localStorage.getItem(TOKEN_KEY) || "");
-  const [status, setStatus]  = useState("loading"); // loading | ok | error | rate_limit
+  const [digest, setDigest] = useState(null);
+  const [token,  setToken]  = useState(() => localStorage.getItem(TOKEN_KEY) || "");
+  const [status, setStatus] = useState("loading");
 
   const load = useCallback(async (tok) => {
     setStatus("loading");
@@ -144,7 +113,7 @@ function App() {
       setStatus("ok");
       hideOverlay();
       if (source === "cache") console.log("[digest] loaded from cache");
-      else console.log(`[digest] fetched from GitHub (${total?.toLocaleString()} total results)`);
+      else console.log("[digest] fetched from GitHub (" + (total || 0).toLocaleString() + " results)");
     } catch (err) {
       if (err.message === "rate_limit") {
         const reset = err.reset ? new Date(err.reset * 1000).toLocaleTimeString() : "稍後";
@@ -153,9 +122,8 @@ function App() {
           <div class="overlay-error">
             <h2>⏱ GitHub 速率限制</h2>
             <p>未授權請求每小時限制 10 次搜尋。重置時間：${reset}。<br>
-               輸入 GitHub Token 可提升到每小時 30 次。</p>
-            <button class="overlay-btn primary" onclick="document.getElementById('tweaks-toggle').click()">設定 Token</button>
-            <button class="overlay-btn ghost" onclick="window.__useMock()">先用示範資料</button>
+               點 ⚙ 設定 GitHub Token 可提升到每小時 30 次。</p>
+            <button class="overlay-btn primary" onclick="window.__useMock()">先用示範資料</button>
           </div>
         `);
       } else {
@@ -165,120 +133,43 @@ function App() {
             <h2>無法取得資料</h2>
             <p>${err.message}</p>
             <button class="overlay-btn primary" onclick="window.__retry()">重試</button>
-            <button class="overlay-btn ghost" onclick="window.__useMock()">先用示範資料</button>
+            <button class="overlay-btn ghost"   onclick="window.__useMock()">先用示範資料</button>
           </div>
         `);
       }
     }
   }, []);
 
-  // Expose helpers for overlay buttons (outside React tree)
   useEffect(() => {
     window.__retry   = () => load(localStorage.getItem(TOKEN_KEY) || "");
     window.__useMock = () => { setDigest(window.DIGEST_DATA); setStatus("ok"); hideOverlay(); };
   }, [load]);
 
-  // Initial load
   useEffect(() => { load(token); }, []);
 
   const saveToken = (t) => {
     const trimmed = t.trim();
     setToken(trimmed);
     if (trimmed) localStorage.setItem(TOKEN_KEY, trimmed);
-    else localStorage.removeItem(TOKEN_KEY);
+    else         localStorage.removeItem(TOKEN_KEY);
   };
 
   const data = digest || window.DIGEST_DATA;
-  const sharedProps = { themeMode: tweaks.theme, typeScale: tweaks.typeScale, data };
 
   return (
-    <>
-      <DesignCanvas
-        title="Daily AI Digest · Apple 科技風探索"
-        subtitle={digest
-          ? `${data.dateLabel} · ${data.edition} · 掃描 ${data.totalScanned?.toLocaleString()} 個 repo，精選 ${data.curated} 個`
-          : "每日從 GitHub 撈取與 Gemini / ChatGPT / Claude 相關有價值的應用"}
-      >
-        <DCSection id="variations" title="三種方向" subtitle="點任一張可全螢幕專注觀看；拖曳可重新排序">
-          <DCArtboard id="v1" label="A · App Store Today（每日精選編輯卡）" width={1280} height={1020}>
-            <V1App {...sharedProps} />
-          </DCArtboard>
-          <DCArtboard id="v2" label="B · Apple.com Product Page（滾動長頁、大標題、Bento 區塊）" width={1280} height={1020}>
-            <V2App {...sharedProps} />
-          </DCArtboard>
-          <DCArtboard id="v3" label="C · Apple Intelligence（暗色 + 虹彩 + Siri ring）" width={1280} height={1020}>
-            <V3App {...sharedProps} />
-          </DCArtboard>
-        </DCSection>
-      </DesignCanvas>
-
-      <TweaksPanel title="Tweaks">
-        <TweakSection label="主題">
-          <TweakRadio label="色彩模式"
-            value={tweaks.theme}
-            onChange={(v) => setTweak("theme", v)}
-            options={[{ value: "light", label: "亮色" }, { value: "dark", label: "暗色" }]}
-          />
-        </TweakSection>
-        <TweakSection label="排版">
-          <TweakSlider label="文字大小"
-            min={0.9} max={1.15} step={0.01} unit="x"
-            value={tweaks.typeScale}
-            onChange={(v) => setTweak("typeScale", Math.round(v * 100) / 100)}
-          />
-        </TweakSection>
-        <TweakSection label="資料來源">
-          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-            <div style={{ fontSize:11, color:"rgba(41,38,27,.55)", lineHeight:1.45 }}>
-              GitHub Token（選填）<br/>
-              <span style={{ color:"rgba(41,38,27,.4)" }}>無 token：每小時 10 次搜尋；有 token：30 次</span>
-            </div>
-            <input
-              type="password"
-              className="twk-field"
-              placeholder="ghp_xxxxxxxxxxxx"
-              value={token}
-              onChange={e => saveToken(e.target.value)}
-              style={{ fontFamily:"var(--a-mono)", fontSize:11.5 }}
-            />
-            <div style={{ display:"flex", gap:6 }}>
-              <button className="twk-btn" style={{ flex:1, fontSize:11.5 }}
-                onClick={() => load(token)}>
-                {status === "loading" ? "抓取中…" : "立即重新抓取"}
-              </button>
-              <button className="twk-btn secondary" style={{ fontSize:11.5 }}
-                onClick={() => { window.clearDigestCache(); load(token); }}>
-                清除快取
-              </button>
-            </div>
-            <div style={{ fontSize:11, color: status === "ok" ? "#34c759" : status === "rate_limit" ? "#ff9f0a" : "rgba(41,38,27,.4)" }}>
-              {status === "ok"         && `● 已載入 ${data.curated} 個精選（${data.dateLabel}）`}
-              {status === "loading"    && "○ 抓取中…"}
-              {status === "rate_limit" && "● 速率限制，請設定 Token 或稍後再試"}
-              {status === "error"      && "● 載入失敗，請重試"}
-            </div>
-          </div>
-        </TweakSection>
-      </TweaksPanel>
-    </>
+    <DigestApp
+      data={data}
+      status={status}
+      token={token}
+      onTokenChange={saveToken}
+      onRefresh={() => load(localStorage.getItem(TOKEN_KEY) || "")}
+      onClearCache={() => window.clearDigestCache()}
+    />
   );
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(<App />);
-
-// Standalone tweaks toggle
-(function() {
-  let open = false;
-  const btn = document.getElementById("tweaks-toggle");
-  btn.addEventListener("click", () => {
-    open = !open;
-    window.postMessage({ type: open ? "__activate_edit_mode" : "__deactivate_edit_mode" }, "*");
-  });
-  window.addEventListener("message", e => {
-    if (e.data?.type === "__edit_mode_dismissed") open = false;
-  });
-})();
 </script>
 </body>
 </html>
