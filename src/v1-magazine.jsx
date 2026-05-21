@@ -443,8 +443,7 @@ function A_SectionLabel({ children }) {
   );
 }
 
-function V1App({ themeMode = "light", typeScale = 1 }) {
-  const data = A_DATA;
+function V1App({ themeMode = "light", typeScale = 1, data = A_DATA }) {
   const [open, setOpen] = A_useState(null);
   const [hero, p2, p3, p4, p5] = data.picks;
 
