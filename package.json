@@ -1,0 +1,12 @@
+{
+  "name": "daily-ai-digest",
+  "type": "module",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "update": "node scripts/daily-update.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0"
+  }
+}
