@@ -1,0 +1,27 @@
+name: Daily AI Digest
+
+on:
+  schedule:
+    - cron: "0 1 * * *"  # 1am UTC = 9am Taiwan (UTC+8)
+  workflow_dispatch:      # allow manual trigger
+
+jobs:
+  update-digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Run agent digest
+        run: node scripts/agent-digest.mjs
+        env:
+          RENDER_URL: ${{ secrets.RENDER_URL }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.DIGEST_GITHUB_TOKEN || github.token }}
+          DIGEST_SIZE: "8"
