@@ -19,10 +19,11 @@
 cd /home/user/Daily-AI-Digest && npm install
 ```
 
-### 2. 安裝 Puppeteer（用於截圖，每次需確認）
+### 2. 安裝 Puppeteer 及 Chrome（用於截圖）
 
 ```bash
 node -e "import('puppeteer').then(()=>process.exit(0)).catch(()=>process.exit(1))" 2>/dev/null || npm install puppeteer
+npx puppeteer browsers install chrome 2>/dev/null || true
 ```
 
 ### 3. 截圖 Daily AI Digest 網頁
