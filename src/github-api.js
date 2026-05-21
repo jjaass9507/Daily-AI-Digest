@@ -1,90 +1,102 @@
-// GitHub API integration for Daily AI Digest
-// Uses GitHub Search API — no backend needed, runs in the browser.
-//
-// Rate limits:
-//   Unauthenticated : 10 search requests / hour
-//   Authenticated   : 30 search requests / hour
-//
-// Data is cached in localStorage for 30 minutes to stay within limits.
+// GitHub API integration for Daily AI Digest.
+// Runs in the browser and caches API results in localStorage.
 
 const GITHUB_API = "https://api.github.com";
-const CACHE_KEY   = "daily-digest-data-v1";
-const STARS_KEY   = "daily-digest-stars-v1";
-const CACHE_TTL   = 30 * 60 * 1000; // 30 minutes
+const CACHE_KEY = "daily-digest-data-zh-v2";
+const STARS_KEY = "daily-digest-stars-v1";
+const CACHE_TTL = 30 * 60 * 1000;
 
-// ─── Classification helpers ──────────────────────────────────────────────────
+window.MODEL_COLORS = window.MODEL_COLORS || {
+  Claude: { fg: "#c96442", bg: "rgba(201,100,66,0.10)", ring: "rgba(201,100,66,0.35)" },
+  Gemini: { fg: "#2a6fdb", bg: "rgba(42,111,219,0.10)", ring: "rgba(42,111,219,0.32)" },
+  ChatGPT: { fg: "#137a5a", bg: "rgba(19,122,90,0.10)", ring: "rgba(19,122,90,0.32)" },
+};
 
 function detectModels(repo) {
-  const t = `${repo.name} ${repo.description || ""} ${(repo.topics || []).join(" ")}`.toLowerCase();
+  const text = `${repo.name} ${repo.description || ""} ${(repo.topics || []).join(" ")}`.toLowerCase();
   const models = [];
-  if (t.includes("claude") || t.includes("anthropic"))                                   models.push("Claude");
-  if (t.includes("gemini") || t.includes("google-ai") || t.includes("googleai"))         models.push("Gemini");
-  if (t.includes("chatgpt") || t.includes("openai") || /gpt[-]?[45]/.test(t))           models.push("ChatGPT");
+  if (text.includes("claude") || text.includes("anthropic")) models.push("Claude");
+  if (text.includes("gemini") || text.includes("google-ai") || text.includes("googleai")) models.push("Gemini");
+  if (text.includes("chatgpt") || text.includes("openai") || /gpt[-]?[45]/.test(text)) models.push("ChatGPT");
   return models.length ? models : ["Claude"];
 }
 
 function detectType(repo) {
-  const t = `${repo.name} ${repo.description || ""} ${(repo.topics || []).join(" ")}`.toLowerCase();
-  if (/\bagent|autonomous|agentic\b/.test(t))                           return "Agent";
-  if (/\brag\b|retrieval|embedding|\bvector\b/.test(t))                 return "RAG";
-  if (/\btool\b|plugin|extension|\bmcp\b|server/.test(t))               return "Tool";
+  const text = `${repo.name} ${repo.description || ""} ${(repo.topics || []).join(" ")}`.toLowerCase();
+  if (/\bagent|autonomous|agentic\b/.test(text)) return "Agent";
+  if (/\brag\b|retrieval|embedding|\bvector\b/.test(text)) return "RAG";
+  if (/\btool\b|plugin|extension|\bmcp\b|server/.test(text)) return "Tool";
   return "Demo";
 }
 
 function detectStack(repo) {
-  const known = ["TypeScript","JavaScript","Python","Go","Rust","Java","Ruby","Swift","Kotlin","C++","C#"];
+  const known = ["TypeScript", "JavaScript", "Python", "Go", "Rust", "Java", "Ruby", "Swift", "Kotlin", "C++", "C#"];
   const stack = repo.language && known.includes(repo.language) ? [repo.language] : [];
-  const techTopics = ["react","next.js","nextjs","vue","svelte","langchain","langgraph",
-                       "fastapi","flask","express","bun","deno","docker","pytorch","tensorflow","mcp"];
-  const fromTopics = (repo.topics || []).filter(t => techTopics.includes(t.toLowerCase())).slice(0, 3);
-  return [...new Set([...stack, ...fromTopics])].slice(0, 4);
+  const techTopics = ["react", "next.js", "nextjs", "vue", "svelte", "langchain", "langgraph", "fastapi", "flask", "express", "bun", "deno", "docker", "pytorch", "tensorflow", "mcp"];
+  const topics = (repo.topics || []).filter((topic) => techTopics.includes(topic.toLowerCase())).slice(0, 3);
+  return [...new Set([...stack, ...topics])].slice(0, 4);
 }
 
 function estimateDifficulty(repo) {
-  const t = `${repo.description || ""} ${(repo.topics || []).join(" ")}`.toLowerCase();
-  if (/demo|example|starter|tutorial|template/.test(t) || repo.stargazers_count < 200)
+  const text = `${repo.description || ""} ${(repo.topics || []).join(" ")}`.toLowerCase();
+  if (/demo|example|starter|tutorial|template/.test(text) || repo.stargazers_count < 200) {
     return { label: "簡單", level: 1, eta: "15 分鐘" };
-  if (/production|enterprise|kubernetes|distributed/.test(t) || repo.forks_count > 300)
+  }
+  if (/production|enterprise|kubernetes|distributed/.test(text) || repo.forks_count > 300) {
     return { label: "進階", level: 3, eta: "2 小時" };
+  }
   return { label: "中等", level: 2, eta: "45 分鐘" };
 }
 
+function getStarDelta(repoId, currentStars) {
+  try {
+    const cache = JSON.parse(localStorage.getItem(STARS_KEY) || "{}");
+    const today = new Date().toDateString();
+    const entry = cache[repoId];
+
+    if (entry && entry.date !== today) {
+      const delta = Math.max(0, currentStars - entry.stars);
+      cache[repoId] = { stars: currentStars, date: today };
+      localStorage.setItem(STARS_KEY, JSON.stringify(cache));
+      return delta;
+    }
+
+    if (!entry) {
+      cache[repoId] = { stars: currentStars, date: today };
+      localStorage.setItem(STARS_KEY, JSON.stringify(cache));
+    }
+
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
 function makeSteps(repo, type) {
-  const clone = [
-    `前往 github.com/${repo.full_name} 閱讀 README，了解專案目標與架構`,
-    `git clone https://github.com/${repo.full_name} 並進入目錄`,
+  const base = [
+    `打開 github.com/${repo.full_name}，先快速讀 README 了解專案定位。`,
+    `git clone https://github.com/${repo.full_name}`,
   ];
-  const byType = {
-    Agent: [...clone,
-      "複製 .env.example 為 .env，填入所需的 API key（Anthropic / OpenAI 等）",
-      "安裝依賴（pip install -r requirements.txt 或 npm install）",
-      "執行主程式，觀察 Agent 如何拆解並完成任務",
-    ],
-    RAG: [...clone,
-      "安裝依賴並確認向量資料庫（Chroma / Qdrant / FAISS）設定正確",
-      "執行 ingest 腳本，把你的文件灌進向量庫",
-      "啟動查詢介面，問幾個問題驗證 RAG pipeline 的準確度",
-    ],
-    Tool: [...clone,
-      "安裝依賴，確認必要的 API key 與環境變數就位",
-      "依文件把這個 tool 接進你現有的 Agent 或工作流程",
-      "用真實案例測試，檢查輸出是否符合預期",
-    ],
-    Demo: [...clone,
-      "安裝依賴（npm install 或 pip install -r requirements.txt）",
-      "設定 .env 中的 API key，啟動本地 dev server",
-      "在瀏覽器操作 demo，理解背後的核心技術概念",
-    ],
-  };
-  return (byType[type] || byType.Demo);
+
+  if (type === "RAG") {
+    return [...base, "確認向量資料庫或 embedding 設定。", "依 README 執行 ingest 或 demo 指令。"];
+  }
+  if (type === "Agent") {
+    return [...base, "如果有 .env.example，複製成 .env 並填入 API key。", "安裝依賴後，跑一次範例 Agent 任務。"];
+  }
+  if (type === "Tool") {
+    return [...base, "檢查 tool/plugin 的設定方式。", "啟動本機 server 或 extension 入口點。"];
+  }
+  return [...base, "安裝專案依賴。", "啟動 demo，觀察它的主要流程。"];
 }
 
 function makeCodePreview(repo) {
   const install =
-    repo.language === "Python"                                             ? "$ pip install -r requirements.txt" :
-    repo.language === "TypeScript" || repo.language === "JavaScript"       ? "$ npm install" :
-    repo.language === "Go"                                                  ? "$ go mod download" :
-    repo.language === "Rust"                                                ? "$ cargo build" : "";
+    repo.language === "Python" ? "$ pip install -r requirements.txt" :
+    repo.language === "TypeScript" || repo.language === "JavaScript" ? "$ npm install" :
+    repo.language === "Go" ? "$ go mod download" :
+    repo.language === "Rust" ? "$ cargo build" : "";
+
   return [
     `# ${repo.full_name}`,
     `$ git clone https://github.com/${repo.full_name}`,
@@ -93,74 +105,37 @@ function makeCodePreview(repo) {
   ].filter(Boolean).join("\n");
 }
 
-// ─── Star delta (localStorage cache) ────────────────────────────────────────
-// On first load we record today's star count.
-// On second load (after time passes) we compare to the stored count.
-
-function getStarDelta(repoId, currentStars) {
-  try {
-    const cache  = JSON.parse(localStorage.getItem(STARS_KEY) || "{}");
-    const today  = new Date().toDateString();
-    const entry  = cache[repoId];
-
-    if (entry && entry.date !== today) {
-      // A new day — compute delta from yesterday's stored value
-      const delta = Math.max(0, currentStars - entry.stars);
-      cache[repoId] = { stars: currentStars, date: today };
-      localStorage.setItem(STARS_KEY, JSON.stringify(cache));
-      return delta;
-    }
-    if (!entry) {
-      cache[repoId] = { stars: currentStars, date: today };
-      localStorage.setItem(STARS_KEY, JSON.stringify(cache));
-    }
-    return 0;
-  } catch {
-    return 0;
-  }
-}
-
-// ─── Repo → digest card ──────────────────────────────────────────────────────
-
 function transformRepo(repo, rank) {
   const models = detectModels(repo);
-  const type   = detectType(repo);
-  const stack  = detectStack(repo);
-  const diff   = estimateDifficulty(repo);
-  const delta  = getStarDelta(repo.id, repo.stargazers_count);
+  const type = detectType(repo);
+  const diff = estimateDifficulty(repo);
+  const description = repo.description || `${repo.owner.login} 維護的 ${repo.name} 專案`;
+  const language = repo.language || "未標示語言";
 
-  const desc = repo.description || "";
   return {
-    id:            String(repo.id),
+    id: String(repo.id),
     rank,
-    name:          repo.name,
-    author:        repo.owner.login,
+    name: repo.name,
+    author: repo.owner.login,
     models,
     type,
-    stars:         repo.stargazers_count,
-    starsToday:    delta,
-    starsTrend:    [],
-    difficulty:    diff.label,
+    stars: repo.stargazers_count,
+    starsToday: getStarDelta(repo.id, repo.stargazers_count),
+    difficulty: diff.label,
     difficultyLevel: diff.level,
-    eta:           diff.eta,
-    stack,
-    tagline:       desc || repo.name,
-    summary:       desc
-      ? `${desc}。由 ${repo.owner.login} 維護，使用 ${repo.language || "多種語言"} 開發，目前 GitHub 上有 ${repo.stargazers_count.toLocaleString()} 顆星。`
-      : `由 ${repo.owner.login} 開發的 ${type} 類型專案，與 ${models.join("/")} 整合，目前有 ${repo.stargazers_count.toLocaleString()} 顆星。`,
-    whyValuable:
-      `此專案獲得 ${repo.stargazers_count.toLocaleString()} 顆星、被 fork ${repo.forks_count} 次，社群活躍度高。` +
-      (repo.topics?.length ? `\n相關技術標籤：${repo.topics.slice(0, 5).join("、")}。` : ""),
-    steps:        makeSteps(repo, type),
-    codePreview:  makeCodePreview(repo),
-    githubUrl:    repo.html_url,
-    topics:       repo.topics || [],
-    license:      repo.license?.spdx_id,
-    updatedAt:    repo.updated_at,
+    eta: diff.eta,
+    stack: detectStack(repo),
+    tagline: repo.name,
+    summary: `這是一個由 ${repo.owner.login} 維護的 ${type} 類型專案，和 ${models.join("、")} 生態相關。主要使用 ${language} 開發，目前在 GitHub 上有 ${repo.stargazers_count.toLocaleString()} 顆星。`,
+    whyValuable: `這個專案有明確的公開關注度：${repo.stargazers_count.toLocaleString()} 顆星、${repo.forks_count.toLocaleString()} 次 fork，且近期和 ${models.join("、")} 生態有關。`,
+    steps: makeSteps(repo, type),
+    codePreview: makeCodePreview(repo),
+    githubUrl: repo.html_url,
+    topics: repo.topics || [],
+    license: repo.license?.spdx_id || "N/A",
+    updatedAt: repo.updated_at,
   };
 }
-
-// ─── GitHub Search fetch ─────────────────────────────────────────────────────
 
 async function searchRepos(query, token, perPage = 10) {
   const headers = { Accept: "application/vnd.github.v3+json" };
@@ -168,24 +143,63 @@ async function searchRepos(query, token, perPage = 10) {
 
   const res = await fetch(
     `${GITHUB_API}/search/repositories?q=${encodeURIComponent(query)}&sort=stars&order=desc&per_page=${perPage}`,
-    { headers }
+    { headers },
   );
 
   if (!res.ok) {
     const remaining = res.headers.get("X-RateLimit-Remaining");
     if (res.status === 403 && remaining === "0") {
-      const reset = res.headers.get("X-RateLimit-Reset");
-      throw Object.assign(new Error("rate_limit"), { reset: Number(reset) });
+      const reset = Number(res.headers.get("X-RateLimit-Reset"));
+      throw Object.assign(new Error("rate_limit"), { reset });
     }
     throw new Error(`GitHub API ${res.status}`);
   }
+
   return res.json();
 }
 
-// ─── Main loader ─────────────────────────────────────────────────────────────
+function fallbackData() {
+  const repos = [
+    {
+      id: "fallback-1",
+      rank: 1,
+      name: "awesome-llm-apps",
+      author: "github",
+      models: ["Claude", "ChatGPT"],
+      type: "Agent",
+      stars: 12500,
+      starsToday: 0,
+      difficulty: "簡單",
+      difficultyLevel: 1,
+      eta: "15 分鐘",
+      stack: ["Python", "TypeScript"],
+      tagline: "實用 LLM 應用模式的精選集合。",
+      summary: "這是 GitHub 資料暫時無法取得時顯示的預覽資料。加入 token 或稍後重新整理，就能載入即時 repo。",
+      whyValuable: "它讓平台在 API 受限時仍能預覽完整介面，不會只看到空白頁。",
+      steps: ["如果遇到速率限制，先在設定中加入 GitHub token。", "重新整理今日精選。", "從卡片打開即時 repo。"],
+      codePreview: "$ npm install\n$ npm run dev",
+      githubUrl: "https://github.com/topics/artificial-intelligence",
+      topics: ["ai", "agents"],
+      license: "N/A",
+      updatedAt: new Date().toISOString(),
+    },
+  ];
+
+  return {
+    date: new Date().toISOString().split("T")[0],
+    dateLabel: new Date().toLocaleDateString("zh-TW", { year: "numeric", month: "long", day: "numeric", weekday: "short" }),
+    edition: "預覽版",
+    totalScanned: 0,
+    curated: repos.length,
+    picks: repos,
+    newlyReleased: [],
+    trending: repos.map((repo) => ({ name: repo.name, delta: "+0", pct: "0%" })),
+    modelCounts: { Claude: 1, Gemini: 0, ChatGPT: 1 },
+    typeCounts: { Agent: 1, RAG: 0, Tool: 0, Demo: 0 },
+  };
+}
 
 async function loadDigestData(token = null) {
-  // Return cached data if fresh
   try {
     const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
     if (cached && Date.now() - cached.ts < CACHE_TTL) {
@@ -193,7 +207,17 @@ async function loadDigestData(token = null) {
     }
   } catch {}
 
-  // Search GitHub for repos updated in the last 14 days
+  try {
+    const res = await fetch("/api/digest/today", { headers: { Accept: "application/json" } });
+    if (res.ok) {
+      const data = await res.json();
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ data, ts: Date.now() })); } catch {}
+      return { data, source: "database", total: data.totalScanned || 0 };
+    }
+  } catch {
+    // Static/local previews may not have a database API. Fall back to browser-side GitHub fetching.
+  }
+
   const since = new Date(Date.now() - 14 * 86400e3).toISOString().split("T")[0];
   const queries = [
     `claude anthropic in:name,description,topics pushed:>${since}`,
@@ -201,89 +225,72 @@ async function loadDigestData(token = null) {
     `chatgpt openai in:name,description,topics pushed:>${since}`,
   ];
 
-  const settled = await Promise.allSettled(
-    queries.map(q => searchRepos(q, token, 10))
-  );
-
-  // Surface rate-limit errors
-  for (const r of settled) {
-    if (r.status === "rejected" && r.reason?.message === "rate_limit") throw r.reason;
+  const settled = await Promise.allSettled(queries.map((query) => searchRepos(query, token, 10)));
+  for (const result of settled) {
+    if (result.status === "rejected" && result.reason?.message === "rate_limit") throw result.reason;
   }
 
-  // Merge + deduplicate (exclude forks)
   const seen = new Set();
-  const allRepos = [];
-  for (const r of settled) {
-    if (r.status !== "fulfilled" || !r.value?.items) continue;
-    for (const repo of r.value.items) {
-      if (!seen.has(repo.id) && !repo.fork) {
+  const repos = [];
+  for (const result of settled) {
+    if (result.status !== "fulfilled") continue;
+    for (const repo of result.value.items || []) {
+      if (!repo.fork && !seen.has(repo.id)) {
         seen.add(repo.id);
-        allRepos.push(repo);
+        repos.push(repo);
       }
     }
   }
 
-  if (!allRepos.length) throw new Error("no_results");
+  if (!repos.length) return { data: fallbackData(), source: "fallback", total: 0 };
 
-  allRepos.sort((a, b) => b.stargazers_count - a.stargazers_count);
-
-  const picks = allRepos.slice(0, 8).map((r, i) => transformRepo(r, i + 1));
-
-  // Newly released: created in the last 14 days
+  repos.sort((a, b) => b.stargazers_count - a.stargazers_count);
+  const picks = repos.slice(0, 8).map((repo, index) => transformRepo(repo, index + 1));
   const cutoff = Date.now() - 14 * 86400e3;
-  const newlyReleased = allRepos
-    .filter(r => new Date(r.created_at).getTime() > cutoff)
+  const newlyReleased = repos
+    .filter((repo) => new Date(repo.created_at).getTime() > cutoff)
     .slice(0, 4)
-    .map(r => ({
-      name: r.name, author: r.owner.login,
-      tagline: r.description || r.name,
-      stars: r.stargazers_count, starsToday: r.stargazers_count,
-      models: detectModels(r), type: detectType(r),
+    .map((repo) => ({
+      id: String(repo.id),
+      name: repo.name,
+      author: repo.owner.login,
+      tagline: repo.description || repo.name,
+      summary: repo.description || repo.name,
+      stars: repo.stargazers_count,
+      starsToday: repo.stargazers_count,
+      models: detectModels(repo),
+      type: detectType(repo),
+      githubUrl: repo.html_url,
     }));
 
-  // Trending: by star delta, fall back to star rank
-  const trending = allRepos.slice(0, 10)
-    .map(r => {
-      const d = getStarDelta(r.id, r.stargazers_count);
-      return { name: r.name, delta: `+${d || "?"}`, pct: d ? `+${((d / r.stargazers_count) * 100).toFixed(1)}%` : "新上榜", _d: d };
-    })
-    .sort((a, b) => b._d - a._d)
-    .slice(0, 7)
-    .map(({ _d, ...rest }) => rest);
-
   const modelCounts = { Claude: 0, Gemini: 0, ChatGPT: 0 };
-  const typeCounts  = { Agent: 0, RAG: 0, Tool: 0, Demo: 0 };
-  picks.forEach(p => {
-    p.models.forEach(m => { if (m in modelCounts) modelCounts[m]++; });
-    if (p.type in typeCounts) typeCounts[p.type]++;
+  const typeCounts = { Agent: 0, RAG: 0, Tool: 0, Demo: 0 };
+  picks.forEach((pick) => {
+    pick.models.forEach((model) => { if (modelCounts[model] !== undefined) modelCounts[model] += 1; });
+    if (typeCounts[pick.type] !== undefined) typeCounts[pick.type] += 1;
   });
 
-  const now  = new Date();
-  const days = ["日","一","二","三","四","五","六"];
-  const doy  = Math.floor((now - new Date(now.getFullYear(), 0, 1)) / 86400e3);
-  const total = settled.reduce((s, r) => s + (r.value?.total_count || 0), 0);
-
+  const total = settled.reduce((sum, result) => sum + (result.value?.total_count || 0), 0);
+  const now = new Date();
   const data = {
-    date:          now.toISOString().split("T")[0],
-    dateLabel:     `${now.getFullYear()} 年 ${now.getMonth()+1} 月 ${now.getDate()} 日 · 週${days[now.getDay()]}`,
-    edition:       `Vol. ${doy}`,
-    totalScanned:  total,
-    curated:       picks.length,
+    date: now.toISOString().split("T")[0],
+    dateLabel: now.toLocaleDateString("zh-TW", { year: "numeric", month: "long", day: "numeric", weekday: "short" }),
+    edition: `第 ${Math.floor((now - new Date(now.getFullYear(), 0, 1)) / 86400e3)} 期`,
+    totalScanned: total,
+    curated: picks.length,
     picks,
-    newlyReleased: newlyReleased.length >= 2 ? newlyReleased : window.DIGEST_DATA.newlyReleased,
-    trending:      trending.length >= 2 ? trending : window.DIGEST_DATA.trending,
+    newlyReleased,
+    trending: picks.slice(0, 7).map((pick) => ({ name: pick.name, delta: `+${pick.starsToday || 0}`, pct: "0%" })),
     modelCounts,
     typeCounts,
   };
 
   try { localStorage.setItem(CACHE_KEY, JSON.stringify({ data, ts: Date.now() })); } catch {}
-
   return { data, source: "github", total };
 }
 
-window.loadDigestData    = loadDigestData;
-window.clearDigestCache  = () => {
+window.loadDigestData = loadDigestData;
+window.clearDigestCache = () => {
   localStorage.removeItem(CACHE_KEY);
   localStorage.removeItem(STARS_KEY);
-  console.log("[digest] cache cleared");
 };

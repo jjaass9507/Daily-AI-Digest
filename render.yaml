@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: daily-ai-digest
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false

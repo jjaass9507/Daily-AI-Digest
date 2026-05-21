@@ -1,57 +1,140 @@
-# Daily AI Digest · 每日 AI 開源精選
+# Daily AI Digest
 
-每天從 GitHub 自動抓取與 Claude / Gemini / ChatGPT 相關、最具學習價值的開源專案，以 Apple Today 風格呈現。
+Daily AI Digest 是一個中文版 AI 開源專案精選平台。平台部署在 Render，資料存放在 Neon Postgres。前端採用「B · Apple.com Product Page」風格，從 `/api/digest/today` 讀取已整理好的每日精選資料。
 
-## 功能
+## 目前架構
 
-- **每日自動更新** — 每 30 分鐘從 GitHub Search API 抓取最新資料，快取於 localStorage
-- **篩選** — 按類型（Agent / RAG / Tool / Demo）或模型（Claude / Gemini / ChatGPT）過濾
-- **搜尋** — 即時全文搜尋 repo 名稱、作者、標題、技術棧
-- **收藏** — 點 ♡ 收藏感興趣的專案，儲存於 localStorage
-- **詳情頁** — 點任何卡片開啟底部浮層，含技術棧、理解步驟、程式碼預覽、GitHub 連結
-- **深色模式** — 點 ☽ 切換，偏好設定自動儲存
-- **今日趨勢、模型分佈、類型分佈** — 右側欄即時統計
+```text
+GitHub Search API + Repo README
+        ↓
+GPT/Codex 摘要與整理流程
+        ↓
+Neon Postgres
+        ↓
+server.mjs /api/digest/today
+        ↓
+index.html + React UI
+```
 
-## 快速開始
+## 資料更新策略
 
-直接用瀏覽器開啟 `index.html`（需要能連外網以載入 React CDN 和 GitHub API）：
+目前不使用 Render Cron Job 自動生成摘要。
+
+原因：若要讓摘要真正經過 GPT/Codex 品質整理，不能只依賴 Render Cron 的一般 Node 腳本，除非額外接 OpenAI API。現階段資料更新流程改為：
+
+1. 由 GPT/Codex 協助抓取 GitHub repo 與 README。
+2. 生成繁中摘要、值得關注原因、快速上手步驟。
+3. 寫入 NeonDB。
+4. Render 上的平台只負責讀取 NeonDB 並顯示。
+
+`scripts/update-digest.mjs` 仍保留，可作為規則式 fallback 或之後接 `OPENAI_API_KEY` 的基礎。
+
+## Render 部署
+
+本 repo 的 `render.yaml` 目前只建立一個服務：
+
+```yaml
+daily-ai-digest
+```
+
+用途：
+
+- 提供靜態前端
+- 提供 API
+- 從 NeonDB 讀取最新 digest
+
+Render Web Service 設定：
+
+```text
+Build Command: npm install
+Start Command: npm start
+```
+
+需要設定的環境變數：
 
 ```bash
-# 本地預覽（任何靜態伺服器皆可）
-npx serve .
-# 或
-python3 -m http.server 8080
+DATABASE_URL=postgresql://...
+GITHUB_TOKEN=github_pat_... # 可選，目前主要給 fallback 腳本使用
 ```
 
-然後前往 `http://localhost:8080`。
+## API
 
-## GitHub Token（建議設定）
-
-未登入每小時只有 **10 次** GitHub Search API 請求；設定 token 後提升到 **30 次**。
-
-1. 前往 <https://github.com/settings/tokens>，建立 Personal Access Token（只需 `public_repo` 讀取權限）
-2. 點頁面右上角的 **⚙** 按鈕，貼上 token
-3. 點「立即重新抓取」
-
-Token 僅儲存在你的瀏覽器 localStorage，不會傳送到任何伺服器。
-
-## 專案結構
-
-```
-index.html              入口頁面（載入 React CDN + 所有腳本）
-src/
-  data.js               Mock 示範資料（GitHub API 無法使用時的 fallback）
-  github-api.js         GitHub Search API 整合、快取、資料轉換
-  v1-magazine.jsx       主頁面元件（DigestApp）— App Store Today 風格
+```text
+GET /api/digest/today
+GET /api/digest/:date
+GET /health
 ```
 
-## 技術
+## 本機開發
 
-- **React 18** + **Babel Standalone** — 無 build step，直接瀏覽器執行 JSX
-- **GitHub Search API** — 三條查詢（claude/anthropic、gemini/google-ai、chatgpt/openai）
-- **localStorage** — 資料快取（30 分鐘）、收藏、主題偏好、每日星數快照
+需要 Node.js 20+。
 
-## 資料來源
+```bash
+npm install
+cp .env.example .env
+npm start
+```
 
-GitHub Search API 搜尋過去 14 天內有 push 的 repo，依星數排序後取前 8 名作為「精選」。
-所有分類（Agent / RAG / Tool / Demo）和技術棧偵測均由 `src/github-api.js` 的規則函式自動判斷。
+開啟：
+
+```text
+http://localhost:3000
+```
+
+如果只用靜態 server 開 `localhost:8080`，沒有 `/api/digest/today`，前端會 fallback 成瀏覽器端 GitHub 抓取或 localStorage 快取。
+
+## NeonDB Schema
+
+Schema 位於 `db/schema.sql`。
+
+- `repos`：repo 基本資料
+- `repo_snapshots`：每日 stars/forks 快照
+- `repo_summaries`：README 摘要、中文說明、快速上手步驟
+- `digest_editions`：每日一期完整 payload
+- `digest_items`：每日精選排序與單項 payload
+
+## 資料更新相關 scripts
+
+```bash
+npm run db:schema
+npm run update:digest
+npm run setup:digest
+```
+
+目前這些 scripts 是規則式摘要版本，適合當 fallback。若未來要讓 Render 自己排程並用 GPT 摘要，可以加上：
+
+```bash
+OPENAI_API_KEY=sk-...
+```
+
+再把 `scripts/update-digest.mjs` 改成：
+
+- 有 `OPENAI_API_KEY`：呼叫 GPT 生成摘要
+- 沒有 `OPENAI_API_KEY`：使用規則式摘要
+
+## 安全提醒
+
+不要把真實密鑰提交到 GitHub。
+
+如果 `DATABASE_URL` 曾經貼到聊天、issue、log 或任何公開位置，請到 Neon rotate password，重新產生連線字串，並只放到 Render Environment Variables。
+
+`.gitignore` 已排除：
+
+```text
+.env
+.env.*
+node_modules/
+.codex_tmp/
+```
+
+## 目前 UI
+
+目前前端使用「B · Apple.com Product Page」方向：
+
+- sticky navigation
+- 大型產品頁 hero
+- 每日精選統計
+- 每個 repo 一段 feature section
+- 彩色 product visual
+- bento 趨勢區塊
+- 繁中摘要與快速上手內容

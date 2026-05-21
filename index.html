@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Daily AI Digest · 每日 AI 開源精選</title>
+<title>Daily AI Digest</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>
   :root {
     --a-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "PingFang TC", "Noto Sans TC", sans-serif;
@@ -15,7 +15,7 @@
   }
   html, body, #root { height: 100%; margin: 0; padding: 0; }
   body {
-    background: #000;
+    background: #f5f5f7;
     font-family: var(--a-sans);
     color: #1d1d1f;
     -webkit-font-smoothing: antialiased;
@@ -26,13 +26,11 @@
   button, input { font-family: inherit; }
   pre { white-space: pre; }
 
-  /* Loading / error overlay */
   #digest-overlay {
     position: fixed; inset: 0; z-index: 9999;
-    background: #000;
+    background: #050506;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 18px;
-    font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
     color: rgba(255,255,255,0.9);
     transition: opacity 400ms;
   }
@@ -45,27 +43,24 @@
     animation: spin 1s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .overlay-text { font-size: 15px; font-weight: 500; letter-spacing: -0.1px; }
-  .overlay-sub  { font-size: 12px; color: rgba(255,255,255,0.45); }
+  .overlay-text { font-size: 15px; font-weight: 600; }
+  .overlay-sub { font-size: 12px; color: rgba(255,255,255,0.52); }
   .overlay-error {
     display: flex; flex-direction: column; align-items: center; gap: 10px;
-    max-width: 340px; text-align: center;
+    max-width: 360px; text-align: center;
   }
-  .overlay-error h2 { margin: 0; font-size: 18px; font-weight: 600; }
-  .overlay-error p  { margin: 0; font-size: 13px; color: rgba(255,255,255,0.55); line-height: 1.55; }
+  .overlay-error h2 { margin: 0; font-size: 18px; font-weight: 700; }
+  .overlay-error p { margin: 0; font-size: 13px; color: rgba(255,255,255,0.62); line-height: 1.55; }
   .overlay-btn {
     padding: 8px 20px; border-radius: 999px; border: none; cursor: pointer;
-    font-size: 13px; font-weight: 600; font-family: inherit;
+    font-size: 13px; font-weight: 700;
   }
   .overlay-btn.primary { background: white; color: black; }
-  .overlay-btn.ghost   { background: rgba(255,255,255,0.10); color: white; }
 </style>
 
-<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
-
-<script src="src/data.js"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
 <script src="src/github-api.js"></script>
 <script type="text/babel" src="src/v1-magazine.jsx"></script>
 </head>
@@ -73,22 +68,24 @@
 
 <div id="digest-overlay">
   <div class="overlay-ring"></div>
-  <div class="overlay-text">正在從 GitHub 抓取今日精選…</div>
-  <div class="overlay-sub">每 30 分鐘快取一次</div>
+  <div class="overlay-text">正在載入 GitHub 精選...</div>
+  <div class="overlay-sub">資料會快取 30 分鐘。</div>
 </div>
 
 <div id="root"></div>
 
 <script type="text/babel">
-const { useState, useEffect, useCallback } = React;
+const { useCallback, useEffect, useState } = React;
 
 const TOKEN_KEY = "digest-gh-token";
 
 function showOverlay(html) {
   const el = document.getElementById("digest-overlay");
   el.innerHTML = html;
+  el.style.display = "flex";
   el.classList.remove("hidden");
 }
+
 function hideOverlay() {
   const el = document.getElementById("digest-overlay");
   el.classList.add("hidden");
@@ -97,25 +94,33 @@ function hideOverlay() {
 
 function App() {
   const [digest, setDigest] = useState(null);
-  const [token,  setToken]  = useState(() => localStorage.getItem(TOKEN_KEY) || "");
+  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) || "");
   const [status, setStatus] = useState("loading");
 
   const load = useCallback(async (tok) => {
     setStatus("loading");
     showOverlay(`
       <div class="overlay-ring"></div>
-      <div class="overlay-text">正在從 GitHub 抓取今日精選…</div>
-      <div class="overlay-sub">每 30 分鐘快取一次</div>
+      <div class="overlay-text">正在載入 GitHub 精選...</div>
+      <div class="overlay-sub">資料會快取 30 分鐘。</div>
     `);
+
     try {
       if (typeof window.loadDigestData !== "function") {
-        throw new Error("github-api.js 尚未載入，請確認 src/github-api.js 可正常存取後重試");
+        throw new Error("src/github-api.js did not load.");
       }
+      if (typeof window.DigestApp !== "function") {
+        throw new Error("src/v1-magazine.jsx did not load.");
+      }
+
       const { data, source, total } = await window.loadDigestData(tok || null);
       setDigest(data);
       setStatus("ok");
       hideOverlay();
+
       if (source === "cache") console.log("[digest] loaded from cache");
+      else if (source === "database") console.log("[digest] loaded from database");
+      else if (source === "fallback") console.log("[digest] loaded fallback preview data");
       else console.log("[digest] fetched from GitHub (" + (total || 0).toLocaleString() + " results)");
     } catch (err) {
       if (err.message === "rate_limit") {
@@ -123,20 +128,18 @@ function App() {
         setStatus("rate_limit");
         showOverlay(`
           <div class="overlay-error">
-            <h2>⏱ GitHub 速率限制</h2>
-            <p>未授權請求每小時限制 10 次搜尋。重置時間：${reset}。<br>
-               點 ⚙ 設定 GitHub Token 可提升到每小時 30 次。</p>
-            <button class="overlay-btn primary" onclick="window.__useMock()">先用示範資料</button>
+            <h2>GitHub API 已達速率限制</h2>
+            <p>未登入的 GitHub 搜尋額度較低。請在 ${reset} 後重試，或到設定加入 GitHub token。</p>
+            <button class="overlay-btn primary" onclick="window.__retry()">重試</button>
           </div>
         `);
       } else {
         setStatus("error");
         showOverlay(`
           <div class="overlay-error">
-            <h2>無法取得資料</h2>
+            <h2>無法載入精選資料</h2>
             <p>${err.message}</p>
             <button class="overlay-btn primary" onclick="window.__retry()">重試</button>
-            <button class="overlay-btn ghost"   onclick="window.__useMock()">先用示範資料</button>
           </div>
         `);
       }
@@ -144,35 +147,34 @@ function App() {
   }, []);
 
   useEffect(() => {
-    window.__retry   = () => load(localStorage.getItem(TOKEN_KEY) || "");
-    window.__useMock = () => { setDigest(window.DIGEST_DATA); setStatus("ok"); hideOverlay(); };
+    window.__retry = () => load(localStorage.getItem(TOKEN_KEY) || "");
   }, [load]);
 
   useEffect(() => { load(token); }, []);
 
-  const saveToken = (t) => {
-    const trimmed = t.trim();
+  const saveToken = (value) => {
+    const trimmed = value.trim();
     setToken(trimmed);
     if (trimmed) localStorage.setItem(TOKEN_KEY, trimmed);
-    else         localStorage.removeItem(TOKEN_KEY);
+    else localStorage.removeItem(TOKEN_KEY);
   };
-
-  const data = digest || window.DIGEST_DATA;
 
   return (
     <DigestApp
-      data={data}
+      data={digest}
       status={status}
       token={token}
       onTokenChange={saveToken}
       onRefresh={() => load(localStorage.getItem(TOKEN_KEY) || "")}
-      onClearCache={() => window.clearDigestCache()}
+      onClearCache={() => {
+        window.clearDigestCache();
+        load(localStorage.getItem(TOKEN_KEY) || "");
+      }}
     />
   );
 }
 
-const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(<App />);
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
 </html>
