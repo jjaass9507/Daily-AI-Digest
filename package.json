@@ -14,9 +14,6 @@
     "nodemailer": "^6.9.16",
     "pg": "^8.13.1"
   },
-  "optionalDependencies": {
-    "puppeteer": "^23.11.1"
-  },
   "engines": {
     "node": ">=20"
   }

@@ -19,10 +19,10 @@
 cd /home/user/Daily-AI-Digest && npm install
 ```
 
-### 2. 確認 Puppeteer 可用，若無則安裝
+### 2. 安裝 Puppeteer（用於截圖，每次需確認）
 
 ```bash
-node -e "import('puppeteer').then(()=>process.exit(0)).catch(()=>process.exit(1))" && echo "puppeteer ok" || npm install puppeteer
+node -e "import('puppeteer').then(()=>process.exit(0)).catch(()=>process.exit(1))" 2>/dev/null || npm install puppeteer
 ```
 
 ### 3. 截圖 Daily AI Digest 網頁
