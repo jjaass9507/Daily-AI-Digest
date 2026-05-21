@@ -9,6 +9,8 @@ const { Pool } = pg;
 const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || "";
+const GMAIL_USER = process.env.GMAIL_USER || "";
+const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD || "";
 const ROOT = process.cwd();
 
 const pool = DATABASE_URL
@@ -183,6 +185,48 @@ async function handleInternalDigestUpdate(req, res) {
   }
 }
 
+async function handleInternalSendEmail(req, res) {
+  if (!INTERNAL_API_KEY) { sendJson(res, 503, { error: "INTERNAL_API_KEY not configured" }); return; }
+  const auth = req.headers["authorization"] || "";
+  if (auth !== `Bearer ${INTERNAL_API_KEY}`) { sendJson(res, 401, { error: "unauthorized" }); return; }
+  if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
+    sendJson(res, 503, { error: "GMAIL_USER / GMAIL_APP_PASSWORD not configured on server" });
+    return;
+  }
+
+  let body;
+  try { body = JSON.parse(await readBody(req)); }
+  catch { sendJson(res, 400, { error: "invalid_json" }); return; }
+
+  const { subject, html, screenshot, to } = body;
+  if (!subject || !html) { sendJson(res, 400, { error: "subject and html are required" }); return; }
+
+  const { default: nodemailer } = await import("nodemailer");
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
+  });
+
+  const attachments = [];
+  if (screenshot) {
+    attachments.push({
+      filename: "digest-screenshot.jpg",
+      content: Buffer.from(screenshot, "base64"),
+      cid: "digest-screenshot",
+    });
+  }
+
+  await transporter.sendMail({
+    from: `"Daily AI Digest" <${GMAIL_USER}>`,
+    to: to || "jjaass9507@gmail.com",
+    subject,
+    html,
+    attachments,
+  });
+
+  sendJson(res, 200, { ok: true });
+}
+
 async function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = decodeURIComponent(url.pathname);
@@ -215,6 +259,10 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && req.url === "/internal/digest/update") {
       await handleInternalDigestUpdate(req, res);
+      return;
+    }
+    if (req.method === "POST" && req.url === "/internal/send-email") {
+      await handleInternalSendEmail(req, res);
       return;
     }
     if (req.url === "/api/digest/editions") {

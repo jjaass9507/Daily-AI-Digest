@@ -10,12 +10,10 @@
  * Optional:
  *   EMAIL_TO             - recipient (default: jjaass9507@gmail.com)
  */
-import nodemailer from 'nodemailer';
 import { readFileSync, existsSync } from 'fs';
 
 const RENDER_URL = process.env.RENDER_URL || 'https://daily-ai-digest-36zh.onrender.com';
-const GMAIL_USER = process.env.GMAIL_USER;
-const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD;
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
 const EMAIL_TO = process.env.EMAIL_TO || 'jjaass9507@gmail.com';
 
 const args = process.argv.slice(2);
@@ -188,8 +186,7 @@ function buildHtml(digest, hasScreenshot) {
 // ── main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
-  if (!GMAIL_USER) throw new Error('GMAIL_USER env var is not set');
-  if (!GMAIL_APP_PASSWORD) throw new Error('GMAIL_APP_PASSWORD env var is not set');
+  if (!INTERNAL_API_KEY) throw new Error('INTERNAL_API_KEY env var is not set');
 
   console.log('Fetching digest data...');
   const digest = await fetchDigest();
@@ -200,31 +197,23 @@ async function main() {
   }
 
   const html = buildHtml(digest, hasScreenshot);
-
-  const attachments = [];
-  if (hasScreenshot) {
-    attachments.push({
-      filename: 'digest-screenshot.jpg',
-      content: readFileSync(screenshotPath),
-      cid: 'digest-screenshot',
-    });
-  }
-
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
-  });
-
   const subject = `${digest.edition || 'Daily AI Digest'} ${digest.dateLabel || ''} · 今日 AI 開源精選`;
+  const screenshot = hasScreenshot ? readFileSync(screenshotPath).toString('base64') : null;
 
-  console.log(`Sending to ${EMAIL_TO}...`);
-  await transporter.sendMail({
-    from: `"Daily AI Digest" <${GMAIL_USER}>`,
-    to: EMAIL_TO,
-    subject,
-    html,
-    attachments,
+  console.log(`Posting to Render /internal/send-email...`);
+  const res = await fetch(`${RENDER_URL}/internal/send-email`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${INTERNAL_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ subject, html, screenshot, to: EMAIL_TO }),
   });
+
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Send-email API ${res.status}: ${text}`);
+  const data = JSON.parse(text);
+  if (!data.ok) throw new Error('Email send failed: ' + text);
 
   console.log(`✓ Email sent to ${EMAIL_TO}`);
 }
