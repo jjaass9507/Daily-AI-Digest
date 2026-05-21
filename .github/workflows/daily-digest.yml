@@ -14,14 +14,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
 
-      - run: npm ci
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
 
-      - name: Run agent digest
-        run: node scripts/agent-digest.mjs
+      - name: Run digest update via Claude
+        run: claude --print --allowedTools "Bash" -p "/update-digest"
         env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           RENDER_URL: ${{ secrets.RENDER_URL }}
           INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.DIGEST_GITHUB_TOKEN || github.token }}
-          DIGEST_SIZE: "8"
