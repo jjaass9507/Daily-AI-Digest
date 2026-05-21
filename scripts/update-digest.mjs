@@ -1,14 +1,18 @@
+import { existsSync, readFileSync } from "node:fs";
 import pg from "pg";
 
 const { Pool } = pg;
+
+loadLocalEnv();
 
 const GITHUB_API = "https://api.github.com";
 const DATABASE_URL = process.env.DATABASE_URL;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
 const DIGEST_SIZE = Number(process.env.DIGEST_SIZE || 8);
+const TIME_ZONE = "Asia/Taipei";
 
 if (!DATABASE_URL) {
-  console.error("Missing DATABASE_URL. Set it in Render or your local environment.");
+  console.error("Missing DATABASE_URL. Set it in Render or your local .env.");
   process.exit(1);
 }
 
@@ -24,12 +28,50 @@ const headers = {
 };
 if (GITHUB_TOKEN) headers.Authorization = `Bearer ${GITHUB_TOKEN}`;
 
-function isoDate(date = new Date()) {
-  return date.toISOString().slice(0, 10);
+function loadLocalEnv() {
+  if (!existsSync(".env")) return;
+  const lines = readFileSync(".env", "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const index = trimmed.indexOf("=");
+    if (index === -1) continue;
+    const key = trimmed.slice(0, index).trim();
+    let value = trimmed.slice(index + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (!process.env[key]) process.env[key] = value;
+  }
 }
 
-function detectModels(repo) {
-  const text = `${repo.name} ${repo.description || ""} ${(repo.topics || []).join(" ")}`.toLowerCase();
+function taipeiDate(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function dateLabel(date = new Date()) {
+  return new Intl.DateTimeFormat("zh-TW", {
+    timeZone: TIME_ZONE,
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  }).format(date);
+}
+
+function dayOfYear(date = new Date()) {
+  const taipei = new Date(`${taipeiDate(date)}T00:00:00+08:00`);
+  const start = new Date(`${taipei.getFullYear()}-01-01T00:00:00+08:00`);
+  return Math.floor((taipei - start) / 86400e3) + 1;
+}
+
+function detectModels(repo, readme = "") {
+  const text = `${repo.name} ${repo.description || ""} ${(repo.topics || []).join(" ")} ${readme.slice(0, 2000)}`.toLowerCase();
   const models = [];
   if (text.includes("claude") || text.includes("anthropic")) models.push("Claude");
   if (text.includes("gemini") || text.includes("google-ai") || text.includes("googleai")) models.push("Gemini");
@@ -48,21 +90,21 @@ function detectType(repo, readme = "") {
 function detectStack(repo) {
   const known = ["TypeScript", "JavaScript", "Python", "Go", "Rust", "Java", "Ruby", "Swift", "Kotlin", "C++", "C#"];
   const stack = repo.language && known.includes(repo.language) ? [repo.language] : [];
-  const topics = (repo.topics || []).filter((topic) =>
+  const techTopics = (repo.topics || []).filter((topic) =>
     ["react", "next.js", "nextjs", "vue", "svelte", "langchain", "langgraph", "fastapi", "flask", "express", "bun", "deno", "docker", "pytorch", "tensorflow", "mcp"].includes(topic.toLowerCase()),
   );
-  return [...new Set([...stack, ...topics])].slice(0, 4);
+  return [...new Set([...stack, ...techTopics])].slice(0, 4);
 }
 
 function estimateDifficulty(repo, readme = "") {
   const text = `${repo.description || ""} ${(repo.topics || []).join(" ")} ${readme.slice(0, 2500)}`.toLowerCase();
   if (/demo|example|starter|tutorial|template|quickstart/.test(text) || repo.stargazers_count < 200) {
-    return { label: "簡單", level: 1, eta: "15 分鐘" };
+    return { label: "入門", level: 1, eta: "15 分鐘" };
   }
   if (/production|enterprise|kubernetes|distributed|self-host|deployment/.test(text) || repo.forks_count > 300) {
     return { label: "進階", level: 3, eta: "2 小時" };
   }
-  return { label: "中等", level: 2, eta: "45 分鐘" };
+  return { label: "中階", level: 2, eta: "45 分鐘" };
 }
 
 function cleanReadme(markdown) {
@@ -76,43 +118,50 @@ function cleanReadme(markdown) {
     .trim();
 }
 
+function sentence(text, max = 180) {
+  const cleaned = String(text || "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  return cleaned.length > max ? `${cleaned.slice(0, max).trim()}...` : cleaned;
+}
+
 function pickReadmeSignal(repo, readme) {
   const cleaned = cleanReadme(readme);
-  if (cleaned.length > 120) return cleaned.slice(0, 260);
+  if (cleaned.length > 120) return sentence(cleaned, 220);
   return repo.description || `${repo.owner.login} 維護的 ${repo.name} 專案`;
 }
 
 function makeSummary(repo, models, type, readme) {
   const language = repo.language || "未標示語言";
   const signal = pickReadmeSignal(repo, readme);
-  return `這是一個由 ${repo.owner.login} 維護的 ${type} 類型專案，和 ${models.join("、")} 生態相關。${signal}。主要使用 ${language} 開發，目前在 GitHub 上有 ${repo.stargazers_count.toLocaleString()} 顆星。`;
+  return `這是一個由 ${repo.owner.login} 維護的 ${type} 類 AI 專案，主要與 ${models.join("、")} 生態相關。${signal} 目前以 ${language} 為主要技術，GitHub 上已有 ${repo.stargazers_count.toLocaleString()} 顆星。`;
 }
 
 function makeWhy(repo, models, readme) {
   const hasDocs = /docs|documentation|guide|quickstart|getting started/i.test(readme);
   const hasDemo = /demo|example|playground|sample/i.test(readme);
   const extras = [];
-  if (hasDocs) extras.push("README 或文件訊號完整");
-  if (hasDemo) extras.push("具備 demo 或範例入口");
+  if (hasDocs) extras.push("README 具備文件或上手指引");
+  if (hasDemo) extras.push("提供 demo 或範例可快速驗證");
   const extraText = extras.length ? `，而且${extras.join("、")}` : "";
-  return `這個專案有明確的公開關注度：${repo.stargazers_count.toLocaleString()} 顆星、${repo.forks_count.toLocaleString()} 次 fork，近期也和 ${models.join("、")} 生態相關${extraText}。`;
+  return `它值得收錄是因為近期仍有更新，且已有 ${repo.stargazers_count.toLocaleString()} 顆星與 ${repo.forks_count.toLocaleString()} 次 fork，可作為評估 ${models.join("、")} 工作流、工具整合或產品原型的參考${extraText}。`;
 }
 
 function makeSteps(repo, type, readme) {
   const base = [
-    `打開 github.com/${repo.full_name}，先快速讀 README 了解專案定位。`,
+    `打開 github.com/${repo.full_name}，先閱讀 README 的安裝方式與限制。`,
     `git clone https://github.com/${repo.full_name}`,
   ];
   const hasEnv = /\.env|api key|token|OPENAI|ANTHROPIC|GEMINI/i.test(readme);
-  const install = repo.language === "Python" ? "安裝 Python 依賴，通常是 pip install -r requirements.txt。" :
-    repo.language === "Go" ? "下載 Go module 並執行 README 內的啟動指令。" :
+  const install =
+    repo.language === "Python" ? "安裝 Python 依賴，通常是 pip install -r requirements.txt。" :
+    repo.language === "Go" ? "下載 Go module，並依照 README 執行啟動指令。" :
     repo.language === "Rust" ? "先執行 cargo build，再依 README 啟動範例。" :
     "安裝 Node 依賴，通常是 npm install 或 pnpm install。";
 
-  if (type === "RAG") return [...base, install, "確認向量資料庫、embedding model 或資料 ingest 設定。"];
-  if (type === "Agent") return [...base, hasEnv ? "複製 .env.example 並填入模型 API key。" : "確認 README 是否需要模型 API key。", install, "跑一次範例任務，觀察 Agent 的工具調用流程。"];
-  if (type === "Tool") return [...base, install, "檢查 tool/plugin 設定方式，再接到你的工作流測試。"];
-  return [...base, install, "啟動 demo，觀察它解決的使用情境。"];
+  if (type === "RAG") return [...base, install, "準備測試資料、embedding model 與向量資料庫設定，再執行 ingest 流程。"];
+  if (type === "Agent") return [...base, hasEnv ? "複製 .env.example 並填入必要模型 API key。" : "確認 README 是否需要模型 API key。", install, "先跑官方範例任務，觀察 Agent 的決策與工具呼叫流程。"];
+  if (type === "Tool") return [...base, install, "確認 tool/plugin 的設定方式，先用最小範例測試是否能被模型或應用程式呼叫。"];
+  return [...base, install, "啟動 demo，觀察它解決的使用情境與可延伸方向。"];
 }
 
 function makeCodePreview(repo) {
@@ -155,12 +204,14 @@ async function fetchReadme(repo) {
   if (!res.ok) return { text: "", sha: null };
   const json = await res.json();
   if (!json.content) return { text: "", sha: json.sha || null };
-  const text = Buffer.from(json.content, "base64").toString("utf8");
-  return { text, sha: json.sha || null };
+  return {
+    text: Buffer.from(json.content, "base64").toString("utf8"),
+    sha: json.sha || null,
+  };
 }
 
 function toDigestItem(repo, rank, readmeText, readmeSha, previousStars = 0) {
-  const models = detectModels(repo);
+  const models = detectModels(repo, readmeText);
   const type = detectType(repo, readmeText);
   const difficulty = estimateDifficulty(repo, readmeText);
   const summary = makeSummary(repo, models, type, readmeText);
@@ -184,7 +235,7 @@ function toDigestItem(repo, rank, readmeText, readmeSha, previousStars = 0) {
     difficultyLevel: difficulty.level,
     eta: difficulty.eta,
     stack: detectStack(repo),
-    tagline: repo.name,
+    tagline: repo.description || repo.name,
     summary,
     whyValuable: why,
     steps: quickStart,
@@ -270,7 +321,7 @@ async function saveDigest(client, digestDate, data, reposById) {
         [
           repo.id,
           item.readmeSha,
-          item.summary.slice(0, 500),
+          pickReadmeSignal(repo, item.summary).slice(0, 500),
           item.summary,
           item.whyValuable,
           JSON.stringify(item.steps),
@@ -310,8 +361,8 @@ async function saveDigest(client, digestDate, data, reposById) {
 }
 
 async function main() {
-  const digestDate = isoDate();
-  const since = new Date(Date.now() - 14 * 86400e3).toISOString().slice(0, 10);
+  const digestDate = taipeiDate();
+  const since = taipeiDate(new Date(Date.now() - 14 * 86400e3));
   const queries = [
     `claude anthropic in:name,description,topics pushed:>${since}`,
     `gemini google-ai in:name,description,topics pushed:>${since}`,
@@ -332,6 +383,8 @@ async function main() {
   }
 
   const candidates = [...reposById.values()].sort((a, b) => scoreRepo(b) - scoreRepo(a)).slice(0, DIGEST_SIZE);
+  if (!candidates.length) throw new Error("No GitHub candidates were found.");
+
   const client = await pool.connect();
   try {
     const items = [];
@@ -341,12 +394,11 @@ async function main() {
       items.push(toDigestItem(repo, items.length + 1, text, sha, previous));
     }
 
-    const now = new Date();
     const data = {
       date: digestDate,
-      dateLabel: now.toLocaleDateString("zh-TW", { year: "numeric", month: "long", day: "numeric", weekday: "short" }),
-      edition: `第 ${Math.floor((now - new Date(now.getFullYear(), 0, 1)) / 86400e3)} 期`,
-      theme: "今日值得追蹤的 AI 開源專案",
+      dateLabel: dateLabel(),
+      edition: `第 ${dayOfYear()} 期`,
+      theme: "今日值得關注的 AI 開源專案",
       totalScanned,
       curated: items.length,
       picks: items,
@@ -358,6 +410,7 @@ async function main() {
       modelCounts: { Claude: 0, Gemini: 0, ChatGPT: 0 },
       typeCounts: { Agent: 0, RAG: 0, Tool: 0, Demo: 0 },
     };
+
     for (const item of items) {
       item.models.forEach((model) => { if (data.modelCounts[model] !== undefined) data.modelCounts[model] += 1; });
       if (data.typeCounts[item.type] !== undefined) data.typeCounts[item.type] += 1;
@@ -365,6 +418,8 @@ async function main() {
 
     await saveDigest(client, digestDate, data, reposById);
     console.log(`Saved ${items.length} digest items for ${digestDate}.`);
+    console.log(`Top repos: ${items.slice(0, 3).map((item) => item.fullName).join(", ")}`);
+    console.log(`Total scanned: ${totalScanned}.`);
   } finally {
     client.release();
     await pool.end();
