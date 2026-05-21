@@ -48,36 +48,59 @@ async function fetchDigest() {
 function buildHtml(digest, hasScreenshot) {
   const picks = (digest.picks || []).slice(0, 15);
   const mc = digest.modelCounts || {};
-  const tc = digest.typeCounts || {};
+  const allStats = [
+    ...Object.entries(mc).map(([k, v]) => ({ label: k, val: v })),
+    { label: '掃描', val: num(digest.totalScanned) },
+  ];
 
-  const statsHtml = Object.entries({ ...mc, ...tc })
-    .map(([k, v]) => `
-      <td style="text-align:center;padding:0 16px;border-right:1px solid #eee">
-        <div style="font-size:22px;font-weight:800;color:#1d1d1f;line-height:1">${v}</div>
-        <div style="font-size:11px;color:#aaa;margin-top:3px">${k}</div>
-      </td>`)
-    .join('');
+  const statsHtml = allStats.map(({ label, val }, i) => `
+    <td style="text-align:center;padding:14px 12px${i < allStats.length - 1 ? ';border-right:1px solid #f0f0f0' : ''}">
+      <div style="font-size:20px;font-weight:800;color:#1d1d1f;line-height:1">${val}</div>
+      <div style="font-size:11px;color:#aaa;margin-top:3px">${label}</div>
+    </td>`).join('');
 
   const picksHtml = picks.map((p, i) => {
     const modelBadges = (p.models || []).map(m => badge(m, modelColor(m))).join('');
     const typeBadge = badge(p.type || 'Tool', typeColor(p.type));
+    // Short display URL: github.com/author/name
+    const displayUrl = (p.githubUrl || '').replace('https://', '');
+    const stackStr = (p.stack || []).slice(0, 3).join(' · ');
     return `
     <tr>
-      <td style="padding:20px 0;border-bottom:1px solid #f5f5f7;vertical-align:top">
+      <td style="padding:22px 0;border-bottom:1px solid #f5f5f5;vertical-align:top">
         <table width="100%" cellpadding="0" cellspacing="0"><tr>
-          <td style="width:40px;vertical-align:top;padding-top:4px">
-            <span style="font-size:20px;font-weight:900;color:#e8e8ea">${String(i + 1).padStart(2, '0')}</span>
+          <td style="width:36px;vertical-align:top;padding-top:3px">
+            <span style="font-size:18px;font-weight:900;color:#e4e4e6">${String(i + 1).padStart(2, '0')}</span>
           </td>
           <td style="vertical-align:top">
-            <div style="margin-bottom:6px">${modelBadges}${typeBadge}</div>
-            <a href="${p.githubUrl || '#'}" style="font-size:16px;font-weight:800;color:#1d1d1f;text-decoration:none;display:block;margin-bottom:3px">${p.name || ''}</a>
-            <div style="font-size:13px;color:#888;font-weight:500;margin-bottom:8px">${p.tagline || ''}</div>
-            <div style="font-size:14px;color:#444;line-height:1.65;margin-bottom:10px">${p.summary || ''}</div>
-            <div style="font-size:12px;color:#aaa">
-              ⭐ ${num(p.stars)}
-              &nbsp;·&nbsp; ${p.author || ''}
-              ${p.stack && p.stack.length ? `&nbsp;·&nbsp; ${p.stack.slice(0, 3).join(' / ')}` : ''}
-            </div>
+            <!-- badges -->
+            <div style="margin-bottom:7px">${modelBadges}${typeBadge}</div>
+
+            <!-- title -->
+            <a href="${p.githubUrl || '#'}" style="font-size:16px;font-weight:800;color:#1d1d1f;text-decoration:none">${p.name || ''}</a>
+            &nbsp;
+            <span style="font-size:12px;color:#aaa">${p.author || ''}</span>
+
+            <!-- tagline -->
+            <div style="font-size:13px;color:#777;font-weight:500;margin:4px 0 9px">${p.tagline || ''}</div>
+
+            <!-- summary -->
+            <div style="font-size:14px;color:#444;line-height:1.7;margin-bottom:12px">${p.summary || ''}</div>
+
+            <!-- meta row: stars + stack + github link -->
+            <table cellpadding="0" cellspacing="0" width="100%"><tr>
+              <td style="vertical-align:middle">
+                <span style="font-size:12px;color:#aaa">⭐ ${num(p.stars)}</span>
+                ${stackStr ? `<span style="font-size:12px;color:#ccc">&nbsp;·&nbsp;</span><span style="font-size:12px;color:#aaa">${stackStr}</span>` : ''}
+              </td>
+              <td style="text-align:right;vertical-align:middle;white-space:nowrap">
+                <a href="${p.githubUrl || '#'}"
+                   style="display:inline-block;font-size:12px;font-weight:600;color:#2a9df4;text-decoration:none;border:1px solid #d0e8fb;border-radius:6px;padding:3px 10px;background:#f5faff">
+                  ${displayUrl}&nbsp;↗
+                </a>
+              </td>
+            </tr></table>
+
           </td>
         </tr></table>
       </td>
@@ -91,62 +114,67 @@ function buildHtml(digest, hasScreenshot) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${digest.edition || 'Daily AI Digest'}</title>
 </head>
-<body style="margin:0;padding:0;background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,'PingFang TC','Noto Sans TC',sans-serif;-webkit-font-smoothing:antialiased">
+<body style="margin:0;padding:0;background:#f0f0f5;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,'PingFang TC','Noto Sans TC',sans-serif;-webkit-font-smoothing:antialiased">
 
 <table width="100%" cellpadding="0" cellspacing="0">
-<tr><td style="padding:24px 16px">
+<tr><td style="padding:28px 16px">
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;margin:0 auto">
 
-  <!-- Header -->
-  <tr><td>
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#0f0f1a 0%,#1a1a2e 100%);border-radius:16px;overflow:hidden;margin-bottom:16px">
-      <tr><td style="padding:36px 32px;text-align:center">
-        <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.4);letter-spacing:3px;text-transform:uppercase;margin-bottom:10px">DAILY AI DIGEST</div>
-        <div style="font-size:28px;font-weight:900;color:#fff;margin-bottom:8px;line-height:1.2">${digest.dateLabel || ''}</div>
-        <div style="font-size:14px;color:rgba(255,255,255,0.55)">${digest.edition || ''} &nbsp;·&nbsp; 精選 ${picks.length} 個 AI 開源專案</div>
+  <!-- ── HEADER ── -->
+  <tr><td style="padding-bottom:14px">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(145deg,#0a0a18 0%,#141428 60%,#1a1040 100%);border-radius:18px">
+      <tr><td style="padding:38px 32px 30px;text-align:center">
+        <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.35);letter-spacing:4px;text-transform:uppercase;margin-bottom:12px">DAILY AI DIGEST</div>
+        <div style="font-size:30px;font-weight:900;color:#fff;line-height:1.15;margin-bottom:8px">${digest.dateLabel || ''}</div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:24px">${digest.edition || ''} &nbsp;·&nbsp; 精選 ${picks.length} 個 AI 開源專案</div>
+        <!-- CTA -->
+        <a href="${RENDER_URL}"
+           style="display:inline-block;background:#fff;color:#0a0a18;font-size:13px;font-weight:800;padding:10px 28px;border-radius:99px;text-decoration:none;letter-spacing:0.3px">
+          查看完整電子報 →
+        </a>
       </td></tr>
     </table>
   </td></tr>
 
   ${hasScreenshot ? `
-  <!-- Screenshot -->
-  <tr><td style="margin-bottom:16px;display:block">
-    <div style="border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1);margin-bottom:16px">
-      <img src="cid:digest-screenshot" width="100%" style="display:block;max-width:100%" alt="Daily AI Digest 網頁預覽">
+  <!-- ── SCREENSHOT ── -->
+  <tr><td style="padding-bottom:14px">
+    <div style="border-radius:14px;overflow:hidden;box-shadow:0 6px 28px rgba(0,0,0,0.12)">
+      <img src="cid:digest-screenshot" width="100%" style="display:block;max-width:100%;border-radius:14px" alt="Daily AI Digest 網頁截圖">
     </div>
   </td></tr>
   ` : ''}
 
-  <!-- Stats -->
-  <tr><td>
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;margin-bottom:16px;overflow:hidden">
-      <tr>
-        ${statsHtml}
-        <td style="text-align:center;padding:16px">
-          <div style="font-size:22px;font-weight:800;color:#1d1d1f;line-height:1">${num(digest.totalScanned)}</div>
-          <div style="font-size:11px;color:#aaa;margin-top:3px">掃描</div>
-        </td>
-      </tr>
+  <!-- ── STATS ── -->
+  <tr><td style="padding-bottom:14px">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:14px;overflow:hidden">
+      <tr>${statsHtml}</tr>
     </table>
   </td></tr>
 
-  <!-- Picks -->
+  <!-- ── PICKS ── -->
   <tr><td>
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;padding:24px 28px">
-      <tr><td style="padding-bottom:4px">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:14px">
+      <tr><td style="padding:24px 26px 0">
         <div style="font-size:17px;font-weight:800;color:#1d1d1f">今日精選</div>
-        <div style="font-size:13px;color:#aaa;margin-top:2px;margin-bottom:16px">從 ${num(digest.totalScanned)} 個候選中精選 ${picks.length} 個</div>
+        <div style="font-size:12px;color:#bbb;margin-top:3px;padding-bottom:6px">從 ${num(digest.totalScanned)} 個候選中精選</div>
       </td></tr>
-      ${picksHtml}
+      <tr><td style="padding:0 26px 8px">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          ${picksHtml}
+        </table>
+      </td></tr>
     </table>
   </td></tr>
 
-  <!-- Footer -->
-  <tr><td style="text-align:center;padding:20px 0">
-    <div style="font-size:12px;color:#bbb">
-      <a href="${RENDER_URL}" style="color:#2a9df4;text-decoration:none;font-weight:600">查看網頁版</a>
-      &nbsp;·&nbsp; Daily AI Digest &copy; 2026
+  <!-- ── FOOTER ── -->
+  <tr><td style="padding:20px 0;text-align:center">
+    <div style="font-size:12px;color:#bbb;line-height:2">
+      <a href="${RENDER_URL}" style="color:#2a9df4;text-decoration:none;font-weight:600">Daily AI Digest 網站</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/jjaass9507/daily-ai-digest" style="color:#aaa;text-decoration:none">GitHub</a>
     </div>
+    <div style="font-size:11px;color:#ccc;margin-top:4px">Daily AI Digest &copy; 2026 &nbsp;·&nbsp; 每日自動精選 AI 開源專案</div>
   </td></tr>
 
 </table>
