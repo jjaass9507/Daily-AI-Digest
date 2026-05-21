@@ -108,6 +108,9 @@ function App() {
       <div class="overlay-sub">每 30 分鐘快取一次</div>
     `);
     try {
+      if (typeof window.loadDigestData !== "function") {
+        throw new Error("github-api.js 尚未載入，請確認 src/github-api.js 可正常存取後重試");
+      }
       const { data, source, total } = await window.loadDigestData(tok || null);
       setDigest(data);
       setStatus("ok");
