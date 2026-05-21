@@ -1,5 +1,5 @@
 // GitHub API integration for Daily AI Digest.
-// Runs in the browser and caches API results in localStorage.
+// The app prefers the server-side NeonDB digest API, then falls back to browser-side GitHub data.
 
 const GITHUB_API = "https://api.github.com";
 const CACHE_KEY = "daily-digest-data-zh-v2";
@@ -40,12 +40,12 @@ function detectStack(repo) {
 function estimateDifficulty(repo) {
   const text = `${repo.description || ""} ${(repo.topics || []).join(" ")}`.toLowerCase();
   if (/demo|example|starter|tutorial|template/.test(text) || repo.stargazers_count < 200) {
-    return { label: "簡單", level: 1, eta: "15 分鐘" };
+    return { label: "入門", level: 1, eta: "15 分鐘" };
   }
   if (/production|enterprise|kubernetes|distributed/.test(text) || repo.forks_count > 300) {
     return { label: "進階", level: 3, eta: "2 小時" };
   }
-  return { label: "中等", level: 2, eta: "45 分鐘" };
+  return { label: "中階", level: 2, eta: "45 分鐘" };
 }
 
 function getStarDelta(repoId, currentStars) {
@@ -74,20 +74,20 @@ function getStarDelta(repoId, currentStars) {
 
 function makeSteps(repo, type) {
   const base = [
-    `打開 github.com/${repo.full_name}，先快速讀 README 了解專案定位。`,
+    `打開 github.com/${repo.full_name}，先閱讀 README 的安裝與限制。`,
     `git clone https://github.com/${repo.full_name}`,
   ];
 
   if (type === "RAG") {
-    return [...base, "確認向量資料庫或 embedding 設定。", "依 README 執行 ingest 或 demo 指令。"];
+    return [...base, "準備測試資料與 embedding 設定。", "依照 README 執行 ingest 或 demo 流程。"];
   }
   if (type === "Agent") {
-    return [...base, "如果有 .env.example，複製成 .env 並填入 API key。", "安裝依賴後，跑一次範例 Agent 任務。"];
+    return [...base, "若有 .env.example，複製成 .env 並填入必要 API key。", "安裝依賴後先跑官方範例，確認 Agent 流程可執行。"];
   }
   if (type === "Tool") {
-    return [...base, "檢查 tool/plugin 的設定方式。", "啟動本機 server 或 extension 入口點。"];
+    return [...base, "確認 tool/plugin 的設定方式。", "用最小範例測試 server 或 extension 是否正常。"];
   }
-  return [...base, "安裝專案依賴。", "啟動 demo，觀察它的主要流程。"];
+  return [...base, "安裝專案依賴。", "啟動 demo，觀察它解決的使用情境。"];
 }
 
 function makeCodePreview(repo) {
@@ -121,13 +121,14 @@ function transformRepo(repo, rank) {
     type,
     stars: repo.stargazers_count,
     starsToday: getStarDelta(repo.id, repo.stargazers_count),
+    forks: repo.forks_count,
     difficulty: diff.label,
     difficultyLevel: diff.level,
     eta: diff.eta,
     stack: detectStack(repo),
     tagline: repo.name,
-    summary: `這是一個由 ${repo.owner.login} 維護的 ${type} 類型專案，和 ${models.join("、")} 生態相關。主要使用 ${language} 開發，目前在 GitHub 上有 ${repo.stargazers_count.toLocaleString()} 顆星。`,
-    whyValuable: `這個專案有明確的公開關注度：${repo.stargazers_count.toLocaleString()} 顆星、${repo.forks_count.toLocaleString()} 次 fork，且近期和 ${models.join("、")} 生態有關。`,
+    summary: `這是一個由 ${repo.owner.login} 維護的 ${type} 類 AI 專案，主要與 ${models.join("、")} 生態相關。${description} 目前以 ${language} 為主要技術，GitHub 上已有 ${repo.stargazers_count.toLocaleString()} 顆星。`,
+    whyValuable: `它值得關注是因為近期仍有更新，且已有 ${repo.stargazers_count.toLocaleString()} 顆星與 ${repo.forks_count.toLocaleString()} 次 fork，可作為評估 ${models.join("、")} 工作流、工具整合或產品原型的參考。`,
     steps: makeSteps(repo, type),
     codePreview: makeCodePreview(repo),
     githubUrl: repo.html_url,
@@ -169,15 +170,16 @@ function fallbackData() {
       type: "Agent",
       stars: 12500,
       starsToday: 0,
-      difficulty: "簡單",
+      forks: 0,
+      difficulty: "入門",
       difficultyLevel: 1,
       eta: "15 分鐘",
       stack: ["Python", "TypeScript"],
-      tagline: "實用 LLM 應用模式的精選集合。",
-      summary: "這是 GitHub 資料暫時無法取得時顯示的預覽資料。加入 token 或稍後重新整理，就能載入即時 repo。",
-      whyValuable: "它讓平台在 API 受限時仍能預覽完整介面，不會只看到空白頁。",
-      steps: ["如果遇到速率限制，先在設定中加入 GitHub token。", "重新整理今日精選。", "從卡片打開即時 repo。"],
-      codePreview: "$ npm install\n$ npm run dev",
+      tagline: "LLM 應用範例集合",
+      summary: "目前無法讀取資料庫或 GitHub 即時資料，因此顯示 fallback 預覽資料。正式部署時，請確認 Render 已設定 DATABASE_URL，且 NeonDB 中已有 digest_editions 資料。",
+      whyValuable: "這筆資料用來避免前台空白，協助你確認 UI 能正常載入。資料流程修復後，平台會改讀 NeonDB 中的每日精選。",
+      steps: ["確認 Render Environment Variables。", "確認 /api/digest/today 是否有回傳資料。", "若需要即時 fallback，填入 GitHub token 後重新整理。"],
+      codePreview: "$ npm install\n$ npm start",
       githubUrl: "https://github.com/topics/artificial-intelligence",
       topics: ["ai", "agents"],
       license: "N/A",
@@ -189,6 +191,7 @@ function fallbackData() {
     date: new Date().toISOString().split("T")[0],
     dateLabel: new Date().toLocaleDateString("zh-TW", { year: "numeric", month: "long", day: "numeric", weekday: "short" }),
     edition: "預覽版",
+    theme: "資料載入備援",
     totalScanned: 0,
     curated: repos.length,
     picks: repos,
@@ -197,6 +200,16 @@ function fallbackData() {
     modelCounts: { Claude: 1, Gemini: 0, ChatGPT: 1 },
     typeCounts: { Agent: 1, RAG: 0, Tool: 0, Demo: 0 },
   };
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function loadDigestData(token = null) {
@@ -208,14 +221,14 @@ async function loadDigestData(token = null) {
   } catch {}
 
   try {
-    const res = await fetch("/api/digest/today", { headers: { Accept: "application/json" } });
+    const res = await fetchWithTimeout("/api/digest/today", { headers: { Accept: "application/json" } });
     if (res.ok) {
       const data = await res.json();
       try { localStorage.setItem(CACHE_KEY, JSON.stringify({ data, ts: Date.now() })); } catch {}
       return { data, source: "database", total: data.totalScanned || 0 };
     }
   } catch {
-    // Static/local previews may not have a database API. Fall back to browser-side GitHub fetching.
+    // Static/local previews or temporary DB issues fall back to browser-side GitHub fetching.
   }
 
   const since = new Date(Date.now() - 14 * 86400e3).toISOString().split("T")[0];
@@ -276,6 +289,7 @@ async function loadDigestData(token = null) {
     date: now.toISOString().split("T")[0],
     dateLabel: now.toLocaleDateString("zh-TW", { year: "numeric", month: "long", day: "numeric", weekday: "short" }),
     edition: `第 ${Math.floor((now - new Date(now.getFullYear(), 0, 1)) / 86400e3)} 期`,
+    theme: "今日值得關注的 AI 開源專案",
     totalScanned: total,
     curated: picks.length,
     picks,

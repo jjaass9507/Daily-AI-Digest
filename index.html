@@ -69,7 +69,7 @@
 <div id="digest-overlay">
   <div class="overlay-ring"></div>
   <div class="overlay-text">正在載入 GitHub 精選...</div>
-  <div class="overlay-sub">資料會快取 30 分鐘。</div>
+  <div class="overlay-sub">優先讀取 NeonDB，必要時使用 GitHub fallback</div>
 </div>
 
 <div id="root"></div>
@@ -102,7 +102,7 @@ function App() {
     showOverlay(`
       <div class="overlay-ring"></div>
       <div class="overlay-text">正在載入 GitHub 精選...</div>
-      <div class="overlay-sub">資料會快取 30 分鐘。</div>
+      <div class="overlay-sub">優先讀取 NeonDB，必要時使用 GitHub fallback</div>
     `);
 
     try {
@@ -128,8 +128,8 @@ function App() {
         setStatus("rate_limit");
         showOverlay(`
           <div class="overlay-error">
-            <h2>GitHub API 已達速率限制</h2>
-            <p>未登入的 GitHub 搜尋額度較低。請在 ${reset} 後重試，或到設定加入 GitHub token。</p>
+            <h2>GitHub API 速率限制</h2>
+            <p>目前瀏覽器端 GitHub 查詢已達限制，請於 ${reset} 後重試，或先確認 Render 的 DATABASE_URL 是否已設定。</p>
             <button class="overlay-btn primary" onclick="window.__retry()">重試</button>
           </div>
         `);
