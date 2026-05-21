@@ -9,7 +9,7 @@ const RENDER_URL = process.env.RENDER_URL || 'https://daily-ai-digest-36zh.onren
 const OUT = process.argv[2] || '/tmp/digest-screenshot.jpg';
 
 const browser = await puppeteer.launch({
-  args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+  args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--ignore-certificate-errors'],
   headless: 'new',
 });
 
