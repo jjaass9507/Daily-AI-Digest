@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Daily AI Digest · 每日 AI 開源精選</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --a-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "PingFang TC", "Noto Sans TC", sans-serif;
+    --a-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter", "PingFang TC", "Noto Sans TC", sans-serif;
+    --a-mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace;
+    --b-sans: var(--a-sans);
+    --b-display: var(--a-display);
+    --b-mono: var(--a-mono);
+    --c-sans: var(--a-sans);
+    --c-display: var(--a-display);
+    --c-mono: var(--a-mono);
+  }
+  html, body, #root { height: 100%; margin: 0; padding: 0; }
+  body {
+    background: #1d1d1f;
+    font-family: var(--a-sans);
+    color: #1d1d1f;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  * { box-sizing: border-box; }
+  button { font-family: inherit; }
+  input { font-family: inherit; }
+  pre { white-space: pre; }
+
+  /* Standalone tweaks toggle button */
+  #tweaks-toggle {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 2147483645;
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.15);
+    color: white;
+    border: 0.5px solid rgba(255,255,255,0.3);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+    letter-spacing: 0.1px;
+    transition: background 150ms;
+  }
+  #tweaks-toggle:hover {
+    background: rgba(255,255,255,0.25);
+  }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script src="src/data.js"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="src/v1-magazine.jsx"></script>
+<script type="text/babel" src="src/v2-workspace.jsx"></script>
+<script type="text/babel" src="src/v3-reader.jsx"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- Standalone mode: toggle button for Tweaks panel -->
+<button id="tweaks-toggle" title="切換 Tweaks 面板">⚙ Tweaks</button>
+
+<script type="text/babel">
+const { useState } = React;
+
+const DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "light",
+  "typeScale": 1
+}/*EDITMODE-END*/;
+
+function App() {
+  const [tweaks, setTweak] = useTweaks(DEFAULTS);
+
+  const sharedProps = { themeMode: tweaks.theme, typeScale: tweaks.typeScale };
+
+  return (
+    <>
+      <DesignCanvas
+        title="Daily AI Digest · Apple 科技風探索"
+        subtitle="每日從 GitHub 撈取與 Gemini / ChatGPT / Claude 相關有價值的應用。三個方向都以 SF Pro Display / PingFang TC 為基礎，差異在編排語彙。"
+      >
+        <DCSection id="variations" title="三種方向" subtitle="點任一張可全螢幕專注觀看；拖曳可重新排序">
+          <DCArtboard id="v1" label="A · App Store Today（每日精選編輯卡）" width={1280} height={1020}>
+            <V1App {...sharedProps} />
+          </DCArtboard>
+          <DCArtboard id="v2" label="B · Apple.com Product Page（滾動長頁、大標題、Bento 區塊）" width={1280} height={1020}>
+            <V2App {...sharedProps} />
+          </DCArtboard>
+          <DCArtboard id="v3" label="C · Apple Intelligence（暗色 + 虹彩 + Siri ring）" width={1280} height={1020}>
+            <V3App {...sharedProps} />
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="主題">
+          <TweakRadio label="色彩模式"
+            value={tweaks.theme}
+            onChange={(v) => setTweak("theme", v)}
+            options={[
+              { value: "light", label: "亮色" },
+              { value: "dark",  label: "暗色" },
+            ]}
+          />
+        </TweakSection>
+        <TweakSection label="排版">
+          <TweakSlider label="文字大小"
+            min={0.9} max={1.15} step={0.01} unit="x"
+            value={tweaks.typeScale}
+            onChange={(v) => setTweak("typeScale", Math.round(v * 100) / 100)}
+          />
+        </TweakSection>
+      </TweaksPanel>
+    </>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+
+// Standalone mode: wire up the Tweaks toggle button
+(function() {
+  let tweaksOpen = false;
+  const btn = document.getElementById("tweaks-toggle");
+  btn.addEventListener("click", () => {
+    tweaksOpen = !tweaksOpen;
+    window.postMessage({ type: tweaksOpen ? "__activate_edit_mode" : "__deactivate_edit_mode" }, "*");
+  });
+  // Keep button label in sync when panel is dismissed via its own X button
+  window.addEventListener("message", (e) => {
+    if (e.data && e.data.type === "__edit_mode_dismissed") {
+      tweaksOpen = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>
