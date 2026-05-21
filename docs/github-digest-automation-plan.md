@@ -336,44 +336,28 @@ insert into digest_items (...)
 
 ## 7. 排程方案
 
-### 方案 A：Codex/GPT 介入摘要，寫入 NeonDB
+### 方案：Claude Code Scheduled Agent
 
-適合現在階段，因為摘要品質可以由 Codex 直接處理。
+使用 Claude Code `/schedule` 建立遠端定時 agent，電腦不需要開機。
 
 流程：
 
-1. 每日由 Codex 自動化或人工觸發。
-2. Codex 讀取 GitHub 候選 repo 與 README。
-3. Codex 生成繁中摘要 JSON。
-4. Codex 使用 `DATABASE_URL` 寫入 NeonDB。
+1. Claude Code Scheduled Agent 每日定時觸發（Anthropic 雲端執行）。
+2. Agent 透過 `WebFetch` 呼叫 GitHub Search API 取得候選 repo 與 README。
+3. Claude 本身直接生成繁中摘要（不需要 OpenAI API）。
+4. Agent 透過 NeonDB HTTP SQL API 或 Render endpoint 寫入資料。
 5. Render Web Service 讀 NeonDB 顯示。
 
-限制：
+優點：
 
-- 若執行環境依賴本機，電腦未開機時可能不會跑。
-- 需要確保自動化環境可存取 `DATABASE_URL` 與 GitHub API。
+- 電腦不需要開機，由 Anthropic 雲端執行。
+- Claude 本身就是摘要引擎，不需要額外 API 費用。
+- 不需要更改現有 Render 或 NeonDB 基礎設施。
 
-### 方案 B：Render Cron + OpenAI API
+待確認：
 
-適合未來要完全雲端無人值守。
-
-流程：
-
-1. Render Cron 每日執行 `npm run update:digest`。
-2. Node script 使用 GitHub API 抓資料。
-3. Node script 呼叫 OpenAI API 生成摘要。
-4. 寫入 NeonDB。
-5. Render Web Service 讀 NeonDB。
-
-限制：
-
-- 需要 `OPENAI_API_KEY`。
-- 會產生 API 成本。
-- 摘要 prompt 與 JSON validation 要寫得更嚴格。
-
-### 目前建議
-
-短期使用方案 A，因為你希望摘要經過 GPT/Codex 品質處理；等平台穩定後，再把摘要 prompt 固化到程式中，轉成方案 B。
+- 遠端 agent 取得 `DATABASE_URL`、`GITHUB_TOKEN` 的安全方式。
+- NeonDB HTTP SQL API 是否支援 agent 直接寫入，或需透過 Render 的受保護 endpoint。
 
 ## 8. 實作階段
 
