@@ -8,6 +8,7 @@ const { Pool } = pg;
 
 const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = process.env.DATABASE_URL || "";
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || "";
 const ROOT = process.cwd();
 
 const pool = DATABASE_URL
@@ -57,6 +58,116 @@ async function handleDigest(req, res) {
   sendJson(res, 200, rows[0].payload);
 }
 
+async function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
+async function handleInternalDigestUpdate(req, res) {
+  if (!INTERNAL_API_KEY) {
+    sendJson(res, 503, { error: "INTERNAL_API_KEY not configured" });
+    return;
+  }
+  const auth = req.headers["authorization"] || "";
+  if (auth !== `Bearer ${INTERNAL_API_KEY}`) {
+    sendJson(res, 401, { error: "unauthorized" });
+    return;
+  }
+  if (!pool) {
+    sendJson(res, 503, { error: "DATABASE_URL is not configured" });
+    return;
+  }
+
+  let body;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: "invalid_json" });
+    return;
+  }
+
+  const { repos, digest } = body;
+  if (!Array.isArray(repos) || !digest?.date || !Array.isArray(digest.picks)) {
+    sendJson(res, 400, { error: "missing repos or digest fields" });
+    return;
+  }
+
+  const reposById = new Map(repos.map((r) => [r.id, r]));
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+
+    for (const item of digest.picks) {
+      const repo = reposById.get(Number(item.id));
+      if (!repo) continue;
+
+      await client.query(
+        `insert into repos (id, full_name, name, owner, html_url, description, language, topics, license, created_at, updated_at, last_seen_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
+         on conflict (id) do update set
+           full_name=excluded.full_name, name=excluded.name, owner=excluded.owner,
+           html_url=excluded.html_url, description=excluded.description, language=excluded.language,
+           topics=excluded.topics, license=excluded.license, created_at=excluded.created_at,
+           updated_at=excluded.updated_at, last_seen_at=now()`,
+        [repo.id, repo.full_name, repo.name, repo.owner.login, repo.html_url,
+         repo.description, repo.language, repo.topics || [], repo.license?.spdx_id || null,
+         repo.created_at, repo.updated_at],
+      );
+
+      await client.query(
+        `insert into repo_snapshots (repo_id, snapshot_date, stars, forks, pushed_at)
+         values ($1,$2,$3,$4,$5)
+         on conflict (repo_id, snapshot_date) do update set
+           stars=excluded.stars, forks=excluded.forks, pushed_at=excluded.pushed_at`,
+        [repo.id, digest.date, repo.stargazers_count, repo.forks_count, repo.pushed_at],
+      );
+
+      await client.query(
+        `insert into repo_summaries (repo_id, readme_sha, readme_excerpt, summary_zh, why_zh, quick_start_zh, difficulty, eta, generated_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,now())
+         on conflict (repo_id) do update set
+           readme_sha=excluded.readme_sha, readme_excerpt=excluded.readme_excerpt,
+           summary_zh=excluded.summary_zh, why_zh=excluded.why_zh,
+           quick_start_zh=excluded.quick_start_zh, difficulty=excluded.difficulty,
+           eta=excluded.eta, generated_at=now()`,
+        [repo.id, item.readmeSha, item.summary?.slice(0, 500),
+         item.summary, item.whyValuable, JSON.stringify(item.steps),
+         item.difficulty, item.eta],
+      );
+    }
+
+    await client.query(
+      `insert into digest_editions (digest_date, edition, theme, total_scanned, curated_count, payload, generated_at)
+       values ($1,$2,$3,$4,$5,$6,now())
+       on conflict (digest_date) do update set
+         edition=excluded.edition, theme=excluded.theme, total_scanned=excluded.total_scanned,
+         curated_count=excluded.curated_count, payload=excluded.payload, generated_at=now()`,
+      [digest.date, digest.edition, digest.theme, digest.totalScanned, digest.curated, JSON.stringify(digest)],
+    );
+
+    await client.query("delete from digest_items where digest_date = $1", [digest.date]);
+    for (const item of digest.picks) {
+      await client.query(
+        `insert into digest_items (digest_date, repo_id, rank, score, models, item_type, payload)
+         values ($1,$2,$3,$4,$5,$6,$7)`,
+        [digest.date, Number(item.id), item.rank, item.score, item.models, item.type, JSON.stringify(item)],
+      );
+    }
+
+    await client.query("commit");
+    sendJson(res, 200, { ok: true, date: digest.date, saved: digest.picks.length });
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = decodeURIComponent(url.pathname);
@@ -85,6 +196,10 @@ const server = createServer(async (req, res) => {
   try {
     if (req.url === "/health") {
       sendJson(res, 200, { ok: true });
+      return;
+    }
+    if (req.method === "POST" && req.url === "/internal/digest/update") {
+      await handleInternalDigestUpdate(req, res);
       return;
     }
     if (req.url?.startsWith("/api/digest/")) {
