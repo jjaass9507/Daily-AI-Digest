@@ -8,7 +8,7 @@ loadLocalEnv();
 const GITHUB_API = "https://api.github.com";
 const DATABASE_URL = process.env.DATABASE_URL;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
-const DIGEST_SIZE = Number(process.env.DIGEST_SIZE || 8);
+const DIGEST_SIZE = Number(process.env.DIGEST_SIZE || 15);
 const TIME_ZONE = "Asia/Taipei";
 
 if (!DATABASE_URL) {

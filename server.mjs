@@ -35,6 +35,21 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+async function handleEditions(req, res) {
+  if (!pool) {
+    sendJson(res, 503, { error: "DATABASE_URL is not configured" });
+    return;
+  }
+  const { rows } = await pool.query(
+    `select digest_date::text, edition, curated_count,
+            payload->>'dateLabel' as date_label
+     from digest_editions
+     order by digest_date desc
+     limit 90`,
+  );
+  sendJson(res, 200, rows);
+}
+
 async function handleDigest(req, res) {
   if (!pool) {
     sendJson(res, 503, { error: "DATABASE_URL is not configured" });
@@ -200,6 +215,10 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && req.url === "/internal/digest/update") {
       await handleInternalDigestUpdate(req, res);
+      return;
+    }
+    if (req.url === "/api/digest/editions") {
+      await handleEditions(req, res);
       return;
     }
     if (req.url?.startsWith("/api/digest/")) {

@@ -96,8 +96,10 @@ function App() {
   const [digest, setDigest] = useState(null);
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) || "");
   const [status, setStatus] = useState("loading");
+  const [editions, setEditions] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(null);
 
-  const load = useCallback(async (tok) => {
+  const load = useCallback(async (tok, date) => {
     setStatus("loading");
     showOverlay(`
       <div class="overlay-ring"></div>
@@ -113,7 +115,7 @@ function App() {
         throw new Error("src/v1-magazine.jsx did not load.");
       }
 
-      const { data, source, total } = await window.loadDigestData(tok || null);
+      const { data, source, total } = await window.loadDigestData(tok || null, date || null);
       setDigest(data);
       setStatus("ok");
       hideOverlay();
@@ -147,10 +149,15 @@ function App() {
   }, []);
 
   useEffect(() => {
-    window.__retry = () => load(localStorage.getItem(TOKEN_KEY) || "");
-  }, [load]);
+    window.__retry = () => load(localStorage.getItem(TOKEN_KEY) || "", selectedDate);
+  }, [load, selectedDate]);
 
-  useEffect(() => { load(token); }, []);
+  useEffect(() => {
+    load(token, null);
+    if (typeof window.loadEditions === "function") {
+      window.loadEditions().then(setEditions).catch(() => {});
+    }
+  }, []);
 
   const saveToken = (value) => {
     const trimmed = value.trim();
@@ -159,17 +166,25 @@ function App() {
     else localStorage.removeItem(TOKEN_KEY);
   };
 
+  const handleSelectDate = (date) => {
+    setSelectedDate(date);
+    load(localStorage.getItem(TOKEN_KEY) || "", date);
+  };
+
   return (
     <DigestApp
       data={digest}
       status={status}
       token={token}
       onTokenChange={saveToken}
-      onRefresh={() => load(localStorage.getItem(TOKEN_KEY) || "")}
+      onRefresh={() => load(localStorage.getItem(TOKEN_KEY) || "", selectedDate)}
       onClearCache={() => {
         window.clearDigestCache();
-        load(localStorage.getItem(TOKEN_KEY) || "");
+        load(localStorage.getItem(TOKEN_KEY) || "", null);
       }}
+      editions={editions}
+      selectedDate={selectedDate}
+      onSelectDate={handleSelectDate}
     />
   );
 }

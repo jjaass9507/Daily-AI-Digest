@@ -10,7 +10,7 @@
 
 ### 1. 從 GitHub 搜尋候選 repo
 
-用以下五個 query，各取 12 個結果，去除 fork，合併去重後依分數排序，取前 8 名：
+用以下五個 query，各取 12 個結果，去除 fork，合併去重後依分數排序，取前 15 名：
 
 ```
 claude anthropic in:name,description,topics pushed:>SINCE
@@ -89,7 +89,7 @@ Authorization: Bearer $GITHUB_TOKEN  （若有設定）
   "edition": "第 N 期",
   "theme": "今日值得追蹤的 AI 開源專案",
   "totalScanned": N,
-  "curated": 8,
+  "curated": 15,
   "picks": [...],
   "newlyReleased": [],
   "trending": [],
@@ -120,5 +120,5 @@ Content-Type: application/json
 ## 完成標準
 
 - 成功 POST 並收到 `ok: true`
-- `saved` 等於 picks 的數量（通常是 8）
+- `saved` 等於 picks 的數量（通常是 15）
 - 每個 pick 的 summary / whyValuable / steps 是針對該 repo 真正寫的，不是套模板

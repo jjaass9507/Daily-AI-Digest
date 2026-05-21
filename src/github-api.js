@@ -212,24 +212,38 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
   }
 }
 
-async function loadDigestData(token = null) {
+async function loadEditions() {
   try {
-    const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
-    if (cached && Date.now() - cached.ts < CACHE_TTL) {
-      return { data: cached.data, source: "cache" };
-    }
+    const res = await fetchWithTimeout("/api/digest/editions", { headers: { Accept: "application/json" } });
+    if (res.ok) return res.json();
   } catch {}
+  return [];
+}
+
+async function loadDigestData(token = null, date = null) {
+  if (!date) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
+      if (cached && Date.now() - cached.ts < CACHE_TTL) {
+        return { data: cached.data, source: "cache" };
+      }
+    } catch {}
+  }
 
   try {
-    const res = await fetchWithTimeout("/api/digest/today", { headers: { Accept: "application/json" } });
+    const url = date ? `/api/digest/${date}` : "/api/digest/today";
+    const res = await fetchWithTimeout(url, { headers: { Accept: "application/json" } });
     if (res.ok) {
       const data = await res.json();
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ data, ts: Date.now() })); } catch {}
+      if (!date) {
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify({ data, ts: Date.now() })); } catch {}
+      }
       return { data, source: "database", total: data.totalScanned || 0 };
     }
   } catch {
     // Static/local previews or temporary DB issues fall back to browser-side GitHub fetching.
   }
+  if (date) return { data: null, source: "notfound", total: 0 };
 
   const since = new Date(Date.now() - 14 * 86400e3).toISOString().split("T")[0];
   const queries = [
@@ -304,6 +318,7 @@ async function loadDigestData(token = null) {
 }
 
 window.loadDigestData = loadDigestData;
+window.loadEditions = loadEditions;
 window.clearDigestCache = () => {
   localStorage.removeItem(CACHE_KEY);
   localStorage.removeItem(STARS_KEY);

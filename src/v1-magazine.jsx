@@ -117,7 +117,7 @@ function FeatureSection({ pick, index, total }) {
   );
 }
 
-function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache }) {
+function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache, editions, selectedDate, onSelectDate }) {
   const [query, setQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tokenDraft, setTokenDraft] = useState(token || "");
@@ -199,6 +199,26 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
           background: #0071e3;
           border-color: #0071e3;
           color: #ffffff;
+        }
+        .edition-select {
+          border: 1px solid rgba(0,0,0,0.12);
+          border-radius: 999px;
+          background: #ffffff;
+          color: #1d1d1f;
+          font: inherit;
+          font-size: 13px;
+          padding: 8px 15px;
+          cursor: pointer;
+          appearance: none;
+          -webkit-appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 10px center;
+          padding-right: 28px;
+          max-width: 160px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         .settings-wrap {
           position: relative;
@@ -651,6 +671,21 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
             placeholder="搜尋 repo、模型或技術棧"
           />
           <div className="nav-actions">
+            {editions && editions.length > 0 && (
+              <select
+                className="edition-select"
+                value={selectedDate || ""}
+                onChange={(e) => onSelectDate(e.target.value || null)}
+                title="選擇期數"
+              >
+                <option value="">今日最新</option>
+                {editions.map((ed) => (
+                  <option key={ed.digest_date} value={ed.digest_date}>
+                    {ed.edition} · {ed.digest_date}
+                  </option>
+                ))}
+              </select>
+            )}
             <a href="#picks">今日精選</a>
             <button type="button" onClick={onRefresh} disabled={status === "loading"}>重新整理</button>
             <div className="settings-wrap">

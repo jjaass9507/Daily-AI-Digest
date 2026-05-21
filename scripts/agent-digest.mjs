@@ -7,7 +7,7 @@ const GITHUB_API = "https://api.github.com";
 const RENDER_URL = (process.env.RENDER_URL || "").replace(/\/$/, "");
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || "";
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
-const DIGEST_SIZE = Number(process.env.DIGEST_SIZE || 8);
+const DIGEST_SIZE = Number(process.env.DIGEST_SIZE || 15);
 
 if (!RENDER_URL) { console.error("Missing RENDER_URL"); process.exit(1); }
 if (!INTERNAL_API_KEY) { console.error("Missing INTERNAL_API_KEY"); process.exit(1); }
