@@ -221,7 +221,10 @@ async function handleInternalSendEmail(req, res) {
   });
 
   const result = await r.json();
-  if (!r.ok) throw new Error(`Brevo API ${r.status}: ${JSON.stringify(result)}`);
+  if (!r.ok) {
+    sendJson(res, 502, { error: "brevo_error", status: r.status, detail: result });
+    return;
+  }
 
   sendJson(res, 200, { ok: true, messageId: result.messageId });
 }
