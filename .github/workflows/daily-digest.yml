@@ -19,7 +19,7 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
 
       - name: Run digest update via Claude
-        run: claude --print --allowedTools "Bash" -p "/update-digest"
+        run: claude --print --allowedTools "Bash" -p "$(cat .claude/commands/update-digest.md)"
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           RENDER_URL: ${{ secrets.RENDER_URL }}
