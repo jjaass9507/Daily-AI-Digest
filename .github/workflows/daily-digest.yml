@@ -25,3 +25,23 @@ jobs:
           RENDER_URL: ${{ secrets.RENDER_URL }}
           INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.DIGEST_GITHUB_TOKEN || github.token }}
+
+  send-email:
+    needs: update-digest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: .
+
+      - name: Send digest email
+        run: node scripts/send-digest-email.mjs
+        env:
+          RENDER_URL: ${{ secrets.RENDER_URL }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
