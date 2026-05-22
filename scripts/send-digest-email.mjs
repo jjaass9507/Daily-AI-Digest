@@ -212,7 +212,7 @@ async function main() {
       'Authorization': `Bearer ${INTERNAL_API_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ subject, html, to: EMAIL_TO }),
+    body: JSON.stringify({ subject, html }),
   });
 
   const text = await res.text();
@@ -220,7 +220,7 @@ async function main() {
   const data = JSON.parse(text);
   if (!data.ok) throw new Error('Email send failed: ' + text);
 
-  console.log(`✓ Email sent to ${EMAIL_TO}`);
+  console.log(`✓ Email sent (recipients configured on server)`);
 }
 
 main().catch(err => { console.error('✗', err.message); process.exit(1); });

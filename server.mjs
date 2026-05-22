@@ -11,6 +11,7 @@ const DATABASE_URL = process.env.DATABASE_URL || "";
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || "";
 const BREVO_API_KEY = process.env.BREVO_API_KEY || "";
 const SENDER_EMAIL = process.env.SENDER_EMAIL || "jjaass9507@gmail.com";
+const DEFAULT_RECIPIENTS = process.env.EMAIL_TO || "jjaass9507@gmail.com";
 const ROOT = process.cwd();
 
 const pool = DATABASE_URL
@@ -212,7 +213,7 @@ async function handleInternalSendEmail(req, res) {
   const { subject, html, to } = body;
   if (!subject || !html) { sendJson(res, 400, { error: "subject and html are required" }); return; }
 
-  const recipients = (to || "jjaass9507@gmail.com")
+  const recipients = (to || DEFAULT_RECIPIENTS)
     .split(",")
     .map(e => e.trim())
     .filter(Boolean)
