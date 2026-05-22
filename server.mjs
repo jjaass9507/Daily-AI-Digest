@@ -235,7 +235,7 @@ async function handleInternalSendEmail(req, res) {
     .split(",").map(e => e.trim()).filter(Boolean).join(", ");
 
   const mime = [
-    `From: "Daily AI Digest" <${GMAIL_USER}>`,
+    `From: "Daily AI Digest 電子報" <${GMAIL_USER}>`,
     `To: ${toAddresses}`,
     `Subject: =?UTF-8?B?${Buffer.from(subject).toString("base64")}?=`,
     `MIME-Version: 1.0`,

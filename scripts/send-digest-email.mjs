@@ -203,7 +203,9 @@ async function main() {
   }
 
   const html = buildHtml(digest, screenshotUrl);
-  const subject = `${digest.edition || 'Daily AI Digest'} ${digest.dateLabel || ''} · 今日 AI 開源精選`;
+  const dateShort = (digest.date || new Date().toISOString().split("T")[0])
+    .replace(/-0?/g, "/").replace(/^(\d+)\/0?/, "$1/");
+  const subject = `Daily AI Digest 電子報｜${digest.edition || ''} ${dateShort} · AI 開源專案精選`;
 
   console.log(`Posting to Render /internal/send-email...`);
   const res = await fetch(`${RENDER_URL}/internal/send-email`, {
