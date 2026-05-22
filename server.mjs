@@ -9,7 +9,8 @@ const { Pool } = pg;
 const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || "";
-const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
+const BREVO_API_KEY = process.env.BREVO_API_KEY || "";
+const SENDER_EMAIL = process.env.SENDER_EMAIL || "jjaass9507@gmail.com";
 const ROOT = process.cwd();
 
 const pool = DATABASE_URL
@@ -191,8 +192,8 @@ async function handleInternalSendEmail(req, res) {
   if (!INTERNAL_API_KEY) { sendJson(res, 503, { error: "INTERNAL_API_KEY not configured" }); return; }
   const auth = req.headers["authorization"] || "";
   if (auth !== `Bearer ${INTERNAL_API_KEY}`) { sendJson(res, 401, { error: "unauthorized" }); return; }
-  if (!RESEND_API_KEY) {
-    sendJson(res, 503, { error: "RESEND_API_KEY not configured on server" });
+  if (!BREVO_API_KEY) {
+    sendJson(res, 503, { error: "BREVO_API_KEY not configured on server" });
     return;
   }
 
@@ -204,25 +205,25 @@ async function handleInternalSendEmail(req, res) {
   if (!subject || !html) { sendJson(res, 400, { error: "subject and html are required" }); return; }
 
   const payload = {
-    from: "Daily AI Digest <onboarding@resend.dev>",
-    to: [to || "jjaass9507@gmail.com"],
+    sender: { name: "Daily AI Digest", email: SENDER_EMAIL },
+    to: [{ email: to || "jjaass9507@gmail.com" }],
     subject,
-    html,
+    htmlContent: html,
   };
 
-  const r = await fetch("https://api.resend.com/emails", {
+  const r = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${RESEND_API_KEY}`,
+      "api-key": BREVO_API_KEY,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
   });
 
   const result = await r.json();
-  if (!r.ok) throw new Error(`Resend API ${r.status}: ${JSON.stringify(result)}`);
+  if (!r.ok) throw new Error(`Brevo API ${r.status}: ${JSON.stringify(result)}`);
 
-  sendJson(res, 200, { ok: true, id: result.id });
+  sendJson(res, 200, { ok: true, messageId: result.messageId });
 }
 
 async function handleInternalScreenshot(req, res) {
