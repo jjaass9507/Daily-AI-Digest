@@ -1,13 +1,13 @@
 # 寄送 Daily AI Digest 電子報
 
-從 Render 抓今日 digest 資料，產生 HTML 電子報，透過 Render server（Brevo API）寄出。
+從 Render 抓今日 digest 資料，產生 HTML 電子報，透過 Render server（Gmail API）寄出。
 收件人由 Render 環境變數 `EMAIL_TO` 管理，支援逗號分隔多位收件人。
 
 需要的環境變數：
 - `RENDER_URL` — Render 服務的 base URL
 - `INTERNAL_API_KEY` — Render 內部 API 金鑰
 
-（`BREVO_API_KEY` 與 `EMAIL_TO` 設定在 Render 環境變數，不需在本地設定）
+（Gmail OAuth2 相關設定在 Render 環境變數，不需在本地設定）
 
 ---
 

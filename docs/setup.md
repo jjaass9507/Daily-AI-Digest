@@ -8,7 +8,7 @@
 - GitHub 帳號
 - [Render](https://render.com) 帳號（免費方案即可）
 - [Neon](https://neon.tech) 帳號（免費方案即可）
-- [Brevo](https://brevo.com) 帳號（免費方案每天可寄 300 封）
+- Gmail 帳號 + Google Cloud Console 存取權（用於 OAuth2 寄信）
 
 ---
 
@@ -42,8 +42,10 @@ DATABASE_URL=postgresql://... npm run db:schema
 |---|---|---|
 | `DATABASE_URL` | Neon 連線字串 | `postgresql://user:pass@host/db?sslmode=require` |
 | `INTERNAL_API_KEY` | 自訂的內部 API 金鑰（任意字串，請保密） | `my-secret-key-123` |
-| `BREVO_API_KEY` | Brevo API 金鑰 | `xkeysib-...` |
-| `SENDER_EMAIL` | 寄件者信箱（需在 Brevo 驗證） | `digest@yourdomain.com` |
+| `GMAIL_USER` | 寄件 Gmail 地址 | `you@gmail.com` |
+| `GMAIL_CLIENT_ID` | Google OAuth2 Client ID | `xxx.apps.googleusercontent.com` |
+| `GMAIL_CLIENT_SECRET` | Google OAuth2 Client Secret | `GOCSPX-...` |
+| `GMAIL_REFRESH_TOKEN` | Gmail OAuth2 Refresh Token | `1//04...` |
 | `EMAIL_TO` | 收件人（多人用逗號分隔） | `user1@gmail.com,user2@gmail.com` |
 
 5. 點 **Deploy** 等待部署完成
@@ -51,12 +53,20 @@ DATABASE_URL=postgresql://... npm run db:schema
 
 ---
 
-## 步驟三：取得 Brevo API 金鑰
+## 步驟三：取得 Gmail OAuth2 憑證
 
-1. 登入 [Brevo](https://app.brevo.com)
-2. 右上角 → **Profile → SMTP & API → API Keys**
-3. 建立新 API Key，複製備用
-4. 到 **Senders & Domains** 驗證你的寄件者信箱
+1. 開啟 [Google Cloud Console](https://console.cloud.google.com)，建立專案
+2. **APIs & Services → Enable APIs** → 啟用 **Gmail API**
+3. **Credentials → Create Credentials → OAuth 2.0 Client IDs**，類型選 **Desktop app**
+4. 記下 Client ID 與 Client Secret
+5. **APIs & Services → OAuth consent screen** → Test users → 加入你的 Gmail
+6. 執行腳本取得 Refresh Token：
+
+```bash
+GMAIL_CLIENT_ID=xxx GMAIL_CLIENT_SECRET=xxx node scripts/get-gmail-token.mjs
+```
+
+腳本會產生授權網址，瀏覽器開啟授權後將授權碼貼回終端機，即可取得 `GMAIL_REFRESH_TOKEN`。
 
 ---
 

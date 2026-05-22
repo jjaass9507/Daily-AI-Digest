@@ -1,6 +1,6 @@
 # 電子報功能
 
-Daily AI Digest 的電子報系統：如何生成 HTML 電子報並透過 Brevo 寄送。
+Daily AI Digest 的電子報系統：如何生成 HTML 電子報並透過 Gmail API 寄送。
 
 ## 概覽
 
@@ -13,7 +13,7 @@ Daily AI Digest 的電子報系統：如何生成 HTML 電子報並透過 Brevo 
        ↓
 POST 到 Render /internal/send-email
        ↓
-Render server 呼叫 Brevo API 寄信
+Render server 用 Gmail OAuth2 API 寄信
        ↓
 所有收件人收到電子報
 ```
@@ -72,7 +72,7 @@ EMAIL_TO=user1@gmail.com,user2@company.com,user3@example.com
 
 更改後 Render 會在下次 API 呼叫時自動套用，**不需要重新部署**。
 
-> **隱私提醒**：多位收件人都在 Brevo 的 `to` 欄位，彼此可以看到對方的信箱。若需要隱藏，可改用 BCC（目前尚未實作）。
+> **隱私提醒**：多位收件人都在 Gmail 的 `To` 欄位，彼此可以看到對方的信箱。若需要隱藏，可改用 BCC（目前尚未實作）。
 
 ---
 
@@ -82,17 +82,19 @@ EMAIL_TO=user1@gmail.com,user2@company.com,user3@example.com
 |---|---|---|
 | 本機 / CI | `RENDER_URL` | Render 服務 URL |
 | 本機 / CI | `INTERNAL_API_KEY` | 內部 API 金鑰 |
-| **Render** | `BREVO_API_KEY` | Brevo API 金鑰 |
-| **Render** | `SENDER_EMAIL` | 寄件者信箱（需在 Brevo 驗證） |
+| **Render** | `GMAIL_USER` | 寄件 Gmail 地址 |
+| **Render** | `GMAIL_CLIENT_ID` | Google OAuth2 Client ID |
+| **Render** | `GMAIL_CLIENT_SECRET` | Google OAuth2 Client Secret |
+| **Render** | `GMAIL_REFRESH_TOKEN` | Gmail OAuth2 Refresh Token |
 | **Render** | `EMAIL_TO` | 收件人清單（逗號分隔） |
 
-`BREVO_API_KEY`、`SENDER_EMAIL`、`EMAIL_TO` 只需設在 Render，不需要放在本機 `.env`。
+Gmail OAuth2 相關變數只需設在 Render，不需要放在本機 `.env`。
 
 ---
 
 ## Render 內部 API：`/internal/send-email`
 
-電子報是透過 Render server 的內部 API 寄送，不是直接呼叫 Brevo。
+電子報是透過 Render server 的內部 API 寄送，server 再用 Gmail API 發出。
 
 **Request：**
 
@@ -117,8 +119,11 @@ Content-Type: application/json
 
 ## 常見問題
 
-**Q：寄信失敗顯示 502 brevo_error 怎麼辦？**
-A：檢查 Render 上的 `BREVO_API_KEY` 是否正確，以及 `SENDER_EMAIL` 是否已在 Brevo 完成驗證。
+**Q：寄信失敗顯示 `gmail_token_error: unauthorized_client` 怎麼辦？**
+A：確認 Google Cloud Console 的 OAuth client 類型為 **Desktop app**，並重新執行 `get-gmail-token.mjs` 取得新的 Refresh Token。
+
+**Q：寄信失敗顯示 `gmail_token_error: invalid_grant` 怎麼辦？**
+A：Refresh Token 已失效，重新執行 `scripts/get-gmail-token.mjs` 取得新的 Token 並更新 Render 環境變數。
 
 **Q：今天沒有 digest 資料會怎樣？**
 A：script 在呼叫 `/api/digest/today` 時會得到 404，直接報錯退出，不會寄出空白電子報。
