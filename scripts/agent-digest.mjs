@@ -216,7 +216,7 @@ async function main() {
   const digest = {
     date: digestDate,
     dateLabel: now.toLocaleDateString("zh-TW", { year: "numeric", month: "long", day: "numeric", weekday: "short" }),
-    edition: `第 ${Math.floor((now - new Date(now.getFullYear(), 0, 1)) / 86400e3)} 期`,
+    edition: `第 ${Math.max(1, Math.floor((now - new Date("2026-05-21T00:00:00+08:00")) / 86400e3) + 1)} 期`,
     theme: "今日值得追蹤的 AI 開源專案",
     totalScanned,
     curated: items.length,

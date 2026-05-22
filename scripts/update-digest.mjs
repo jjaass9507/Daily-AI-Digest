@@ -66,8 +66,8 @@ function dateLabel(date = new Date()) {
 
 function dayOfYear(date = new Date()) {
   const taipei = new Date(`${taipeiDate(date)}T00:00:00+08:00`);
-  const start = new Date(`${taipei.getFullYear()}-01-01T00:00:00+08:00`);
-  return Math.floor((taipei - start) / 86400e3) + 1;
+  const start = new Date("2026-05-21T00:00:00+08:00");
+  return Math.max(1, Math.floor((taipei - start) / 86400e3) + 1);
 }
 
 function detectModels(repo, readme = "") {
