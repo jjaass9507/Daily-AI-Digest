@@ -32,6 +32,13 @@ const types = {
   ".png": "image/png",
 };
 
+const EDITION_START = new Date("2026-05-21T00:00:00+08:00");
+
+function editionFromDate(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00+08:00`);
+  return `第 ${Math.max(1, Math.floor((d - EDITION_START) / 86400e3) + 1)} 期`;
+}
+
 function sendJson(res, status, body) {
   res.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
@@ -46,13 +53,13 @@ async function handleEditions(req, res) {
     return;
   }
   const { rows } = await pool.query(
-    `select digest_date::text, edition, curated_count,
+    `select digest_date::text, curated_count,
             payload->>'dateLabel' as date_label
      from digest_editions
      order by digest_date desc
      limit 90`,
   );
-  sendJson(res, 200, rows);
+  sendJson(res, 200, rows.map((r) => ({ ...r, edition: editionFromDate(r.digest_date) })));
 }
 
 async function handleDigest(req, res) {
@@ -67,15 +74,16 @@ async function handleDigest(req, res) {
     : url.pathname.replace("/api/digest/", "");
 
   const query = date
-    ? "select payload from digest_editions where digest_date = $1 limit 1"
-    : "select payload from digest_editions order by digest_date desc limit 1";
+    ? "select digest_date::text, payload from digest_editions where digest_date = $1 limit 1"
+    : "select digest_date::text, payload from digest_editions order by digest_date desc limit 1";
   const params = date ? [date] : [];
   const { rows } = await pool.query(query, params);
   if (!rows.length) {
     sendJson(res, 404, { error: "digest_not_found" });
     return;
   }
-  sendJson(res, 200, rows[0].payload);
+  const payload = { ...rows[0].payload, edition: editionFromDate(rows[0].digest_date) };
+  sendJson(res, 200, payload);
 }
 
 async function readBody(req) {
