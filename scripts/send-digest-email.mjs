@@ -16,9 +16,8 @@ const RENDER_URL = process.env.RENDER_URL || 'https://daily-ai-digest-36zh.onren
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
 const EMAIL_TO = process.env.EMAIL_TO || 'jjaass9507@gmail.com';
 
-const args = process.argv.slice(2);
-const ssIdx = args.indexOf('--screenshot');
-const screenshotPath = ssIdx !== -1 ? args[ssIdx + 1] : null;
+// Screenshot via CID is not supported with Resend; email is sent without inline image.
+const screenshotPath = null;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
