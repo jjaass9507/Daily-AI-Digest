@@ -9,9 +9,11 @@ const { Pool } = pg;
 const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || "";
-const BREVO_API_KEY = process.env.BREVO_API_KEY || "";
-const SENDER_EMAIL = process.env.SENDER_EMAIL || "jjaass9507@gmail.com";
-const DEFAULT_RECIPIENTS = process.env.EMAIL_TO || "jjaass9507@gmail.com";
+const GMAIL_USER = process.env.GMAIL_USER || "";
+const GMAIL_CLIENT_ID = process.env.GMAIL_CLIENT_ID || "";
+const GMAIL_CLIENT_SECRET = process.env.GMAIL_CLIENT_SECRET || "";
+const GMAIL_REFRESH_TOKEN = process.env.GMAIL_REFRESH_TOKEN || "";
+const DEFAULT_RECIPIENTS = process.env.EMAIL_TO || GMAIL_USER;
 const ROOT = process.cwd();
 
 const pool = DATABASE_URL
@@ -197,12 +199,28 @@ async function handleInternalDigestUpdate(req, res) {
   }
 }
 
+async function getGmailAccessToken() {
+  const r = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: GMAIL_CLIENT_ID,
+      client_secret: GMAIL_CLIENT_SECRET,
+      refresh_token: GMAIL_REFRESH_TOKEN,
+      grant_type: "refresh_token",
+    }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(`gmail_token_error: ${data.error}`);
+  return data.access_token;
+}
+
 async function handleInternalSendEmail(req, res) {
   if (!INTERNAL_API_KEY) { sendJson(res, 503, { error: "INTERNAL_API_KEY not configured" }); return; }
   const auth = req.headers["authorization"] || "";
   if (auth !== `Bearer ${INTERNAL_API_KEY}`) { sendJson(res, 401, { error: "unauthorized" }); return; }
-  if (!BREVO_API_KEY) {
-    sendJson(res, 503, { error: "BREVO_API_KEY not configured on server" });
+  if (!GMAIL_USER || !GMAIL_CLIENT_ID || !GMAIL_CLIENT_SECRET || !GMAIL_REFRESH_TOKEN) {
+    sendJson(res, 503, { error: "Gmail OAuth2 env vars not configured" });
     return;
   }
 
@@ -213,35 +231,42 @@ async function handleInternalSendEmail(req, res) {
   const { subject, html, to } = body;
   if (!subject || !html) { sendJson(res, 400, { error: "subject and html are required" }); return; }
 
-  const recipients = (to || DEFAULT_RECIPIENTS)
-    .split(",")
-    .map(e => e.trim())
-    .filter(Boolean)
-    .map(email => ({ email }));
+  const toAddresses = (to || DEFAULT_RECIPIENTS)
+    .split(",").map(e => e.trim()).filter(Boolean).join(", ");
 
-  const payload = {
-    sender: { name: "Daily AI Digest", email: SENDER_EMAIL },
-    to: recipients,
-    subject,
-    htmlContent: html,
-  };
+  const mime = [
+    `From: "Daily AI Digest" <${GMAIL_USER}>`,
+    `To: ${toAddresses}`,
+    `Subject: =?UTF-8?B?${Buffer.from(subject).toString("base64")}?=`,
+    `MIME-Version: 1.0`,
+    `Content-Type: text/html; charset=utf-8`,
+    `Content-Transfer-Encoding: base64`,
+    ``,
+    Buffer.from(html).toString("base64"),
+  ].join("\r\n");
 
-  const r = await fetch("https://api.brevo.com/v3/smtp/email", {
+  const raw = Buffer.from(mime).toString("base64url");
+
+  let accessToken;
+  try { accessToken = await getGmailAccessToken(); }
+  catch (err) { sendJson(res, 502, { error: err.message }); return; }
+
+  const r = await fetch("https://www.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",
     headers: {
-      "api-key": BREVO_API_KEY,
+      Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ raw }),
   });
 
   const result = await r.json();
   if (!r.ok) {
-    sendJson(res, 502, { error: "brevo_error", status: r.status, detail: result });
+    sendJson(res, 502, { error: "gmail_send_error", detail: result.error?.message });
     return;
   }
 
-  sendJson(res, 200, { ok: true, messageId: result.messageId });
+  sendJson(res, 200, { ok: true, messageId: result.id });
 }
 
 async function handleInternalScreenshot(req, res) {
