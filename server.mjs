@@ -204,9 +204,15 @@ async function handleInternalSendEmail(req, res) {
   const { subject, html, to } = body;
   if (!subject || !html) { sendJson(res, 400, { error: "subject and html are required" }); return; }
 
+  const recipients = (to || "jjaass9507@gmail.com")
+    .split(",")
+    .map(e => e.trim())
+    .filter(Boolean)
+    .map(email => ({ email }));
+
   const payload = {
     sender: { name: "Daily AI Digest", email: SENDER_EMAIL },
-    to: [{ email: to || "jjaass9507@gmail.com" }],
+    to: recipients,
     subject,
     htmlContent: html,
   };
