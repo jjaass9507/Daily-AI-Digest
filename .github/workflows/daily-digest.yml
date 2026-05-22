@@ -2,32 +2,11 @@ name: Daily AI Digest
 
 on:
   schedule:
-    - cron: "0 1 * * *"  # 1am UTC = 9am Taiwan (UTC+8)
+    - cron: "0 0 * * *"  # midnight UTC = 8am Taiwan (UTC+8)
   workflow_dispatch:      # allow manual trigger
 
 jobs:
-  update-digest:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
-
-      - name: Run digest update via Claude
-        run: claude --print --allowedTools "Bash" -p "$(cat .claude/commands/update-digest.md)"
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          RENDER_URL: ${{ secrets.RENDER_URL }}
-          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.DIGEST_GITHUB_TOKEN || github.token }}
-
   send-email:
-    needs: update-digest
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +17,6 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-        working-directory: .
 
       - name: Send digest email
         run: node scripts/send-digest-email.mjs
