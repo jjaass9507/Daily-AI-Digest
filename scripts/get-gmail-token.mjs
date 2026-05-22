@@ -1,9 +1,8 @@
 #!/usr/bin/env node
-// 一次性工具：取得 Gmail OAuth2 Refresh Token
+// 一次性工具：取得 Gmail OAuth2 Refresh Token（手動貼 code 版）
 // 用法：GMAIL_CLIENT_ID=xxx GMAIL_CLIENT_SECRET=xxx node scripts/get-gmail-token.mjs
 
-import { createServer } from "node:http";
-import { readFileSync } from "node:fs";
+import * as readline from "node:readline/promises";
 
 const CLIENT_ID = process.env.GMAIL_CLIENT_ID;
 const CLIENT_SECRET = process.env.GMAIL_CLIENT_SECRET;
@@ -14,7 +13,7 @@ if (!CLIENT_ID || !CLIENT_SECRET) {
   process.exit(1);
 }
 
-const REDIRECT_URI = "http://localhost:9876/callback";
+const REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob";
 const SCOPE = "https://www.googleapis.com/auth/gmail.send";
 
 const authUrl =
@@ -26,51 +25,31 @@ const authUrl =
   `&access_type=offline` +
   `&prompt=consent`;
 
-// 等瀏覽器回呼的小 server
-const server = createServer(async (req, res) => {
-  const url = new URL(req.url, "http://localhost:9876");
-  if (url.pathname !== "/callback") {
-    res.end("waiting...");
-    return;
-  }
+console.log("\n步驟 1：用瀏覽器開啟以下網址並登入授權\n");
+console.log(authUrl);
+console.log("\n步驟 2：授權後頁面會顯示一串授權碼，複製貼到下方\n");
 
-  const code = url.searchParams.get("code");
-  const error = url.searchParams.get("error");
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+const code = (await rl.question("授權碼：")).trim();
+rl.close();
 
-  if (error || !code) {
-    res.end(`<h1>錯誤：${error || "no code"}</h1>`);
-    server.close();
-    return;
-  }
-
-  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      code,
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-      redirect_uri: REDIRECT_URI,
-      grant_type: "authorization_code",
-    }),
-  });
-
-  const data = await tokenRes.json();
-
-  if (data.refresh_token) {
-    res.end("<h1>成功！請回終端機查看 Refresh Token。</h1>");
-    console.log("\n✓ 取得成功！把以下值填入 Render 環境變數：\n");
-    console.log(`GMAIL_REFRESH_TOKEN=${data.refresh_token}\n`);
-    server.close();
-  } else {
-    res.end(`<h1>失敗：${JSON.stringify(data)}</h1>`);
-    console.error("✗ 失敗：", data);
-    server.close();
-  }
+const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+  method: "POST",
+  headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  body: new URLSearchParams({
+    code,
+    client_id: CLIENT_ID,
+    client_secret: CLIENT_SECRET,
+    redirect_uri: REDIRECT_URI,
+    grant_type: "authorization_code",
+  }),
 });
 
-server.listen(9876, () => {
-  console.log("請在瀏覽器開啟以下網址授權：\n");
-  console.log(authUrl);
-  console.log("\n授權完成後會自動取得 Refresh Token。\n");
-});
+const data = await tokenRes.json();
+
+if (data.refresh_token) {
+  console.log("\n✓ 成功！把以下值填入 Render 環境變數：\n");
+  console.log(`GMAIL_REFRESH_TOKEN=${data.refresh_token}\n`);
+} else {
+  console.error("\n✗ 失敗：", JSON.stringify(data, null, 2));
+}
