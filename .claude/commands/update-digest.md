@@ -4,9 +4,21 @@
 
 需要的環境變數：`RENDER_URL`、`INTERNAL_API_KEY`、`GITHUB_TOKEN`（選填，提高 rate limit）
 
+> **⚠️ 重要限制**
+> - **禁止**執行 `scripts/update-digest.mjs`、`scripts/agent-digest.mjs` 或任何直連資料庫的腳本
+> - **禁止**使用 `DATABASE_URL` 或直接連線 PostgreSQL（port 5432 在沙盒環境中被封鎖）
+> - 整個流程只允許：用 `curl`/`fetch` 呼叫 GitHub API（HTTPS）、在記憶體中處理資料、最後 POST 到 `$RENDER_URL`（HTTPS）
+> - 資料庫寫入由 Render server 負責，不在這裡執行
+
 ---
 
 ## 步驟
+
+### 0. 清除資料庫環境變數（防止誤連）
+
+```bash
+unset DATABASE_URL
+```
 
 ### 1. 從 GitHub 搜尋候選 repo
 
