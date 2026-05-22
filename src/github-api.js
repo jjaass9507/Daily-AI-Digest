@@ -2,7 +2,7 @@
 // The app prefers the server-side NeonDB digest API, then falls back to browser-side GitHub data.
 
 const GITHUB_API = "https://api.github.com";
-const CACHE_KEY = "daily-digest-data-zh-v2";
+const CACHE_KEY = "daily-digest-data-zh-v3";
 const STARS_KEY = "daily-digest-stars-v1";
 const CACHE_TTL = 30 * 60 * 1000;
 
@@ -302,7 +302,7 @@ async function loadDigestData(token = null, date = null) {
   const data = {
     date: now.toISOString().split("T")[0],
     dateLabel: now.toLocaleDateString("zh-TW", { year: "numeric", month: "long", day: "numeric", weekday: "short" }),
-    edition: `第 ${Math.floor((now - new Date(now.getFullYear(), 0, 1)) / 86400e3)} 期`,
+    edition: `第 ${Math.max(1, Math.floor((now - new Date("2026-05-21T00:00:00+08:00")) / 86400e3) + 1)} 期`,
     theme: "今日值得關注的 AI 開源專案",
     totalScanned: total,
     curated: picks.length,
