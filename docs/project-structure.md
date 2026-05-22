@@ -1,91 +1,98 @@
 # 專案資料夾結構
 
-Daily AI Digest 目前依照「前台 UI、資料更新、資料庫、部署文件、設計工具」分區整理。
-
-```text
+```
 Daily-AI-Digest/
-├─ db/
-│  └─ schema.sql
-├─ docs/
-│  ├─ github-digest-automation-plan.md
-│  └─ project-structure.md
-├─ scripts/
-│  ├─ apply-schema.mjs
-│  └─ update-digest.mjs
-├─ src/
-│  ├─ data.js
-│  ├─ github-api.js
-│  ├─ v1-magazine.jsx
-│  ├─ v2-workspace.jsx
-│  ├─ v3-reader.jsx
-│  └─ README.md
-├─ tools/
-│  ├─ README.md
-│  └─ design/
-│     ├─ design-canvas.jsx
-│     └─ tweaks-panel.jsx
-├─ index.html
-├─ server.mjs
-├─ package.json
-├─ render.yaml
-├─ README.md
-└─ .env.example
+├── .claude/
+│   └── commands/               # Claude Code skills
+│       ├── send-digest-email.md  # /send-digest-email skill
+│       └── update-digest.md      # /update-digest skill
+│
+├── .github/
+│   └── workflows/
+│       └── daily-digest.yml    # GitHub Actions 排程（每天 8am 寄信）
+│
+├── db/
+│   └── schema.sql              # Neon Postgres 建表 SQL
+│
+├── docs/                       # 功能文件（本資料夾）
+│   ├── api.md                  # API 端點參考
+│   ├── database.md             # 資料庫 schema 說明
+│   ├── digest-update.md        # Digest 更新流程
+│   ├── email.md                # 電子報功能
+│   ├── frontend.md             # 前端介面說明
+│   ├── project-structure.md    # 本文件
+│   ├── scheduling.md           # 自動排程設定
+│   └── setup.md                # 首次部署環境設定指南
+│
+├── scripts/
+│   ├── agent-digest.mjs        # Digest 更新（無 DB，透過 Render API）
+│   ├── apply-schema.mjs        # 初始化 Neon Postgres schema
+│   ├── screenshot-digest.mjs   # Puppeteer 截圖工具
+│   ├── send-digest-email.mjs   # 電子報生成與寄送
+│   └── update-digest.mjs       # Digest 更新（需直連 DB）
+│
+├── src/                        # 前端原始碼
+│   ├── data.js                 # 顏色與分類常數
+│   ├── github-api.js           # 資料載入邏輯（API + fallback）
+│   ├── v1-magazine.jsx         # 主要 UI（目前使用）
+│   ├── v2-workspace.jsx        # 備用 UI 版本
+│   ├── v3-reader.jsx           # 備用 UI 版本
+│   └── README.md
+│
+├── tools/
+│   └── design/                 # 開發期設計工具（非 production）
+│       ├── design-canvas.jsx
+│       └── tweaks-panel.jsx
+│
+├── .env.example                # 環境變數範本
+├── .gitignore
+├── .puppeteerrc.cjs            # Puppeteer 設定
+├── CLAUDE.md                   # Claude Code 行為指南
+├── index.html                  # 前端入口
+├── package.json
+├── render.yaml                 # Render 部署設定
+└── server.mjs                  # Node.js server（API + 靜態檔案）
 ```
 
-## 根目錄
+---
 
-- `index.html`：目前的前台入口。
-- `server.mjs`：Render Web Service 與本機 Node server，提供靜態檔案與 `/api/digest/*`。
-- `package.json`：Node scripts 與部署依賴。
-- `render.yaml`：Render Web Service 設定。
-- `.env.example`：環境變數範例，不包含真實密碼。
+## 核心檔案說明
 
-## `src/`
+### `server.mjs`
 
-前台 UI 與瀏覽器端資料載入邏輯。
+Node.js HTTP server，同時提供：
+- 前端靜態檔案（`index.html`, `src/`）
+- 公開 REST API（`/api/digest/*`）
+- 內部 API（`/internal/*`，需 Bearer token）
 
-- `github-api.js`：優先讀取 `/api/digest/today`，失敗時才 fallback 到 GitHub API。
-- `data.js`：保留 UI 顏色與分類常數。
-- `v1-magazine.jsx`：目前正式載入的 Apple.com Product Page 風格 UI。
-- `v2-workspace.jsx`、`v3-reader.jsx`：早期設計版本，保留作為參考。
+詳見 [docs/api.md](api.md)。
 
-## `db/`
+### `scripts/send-digest-email.mjs`
 
-Neon Postgres schema。
+電子報生成腳本。從 Render 的 `/api/digest/today` 抓資料，生成 HTML，透過 Render 的 `/internal/send-email` 寄出。**不需要直連資料庫**。
 
-- `schema.sql`：建立 repos、repo_snapshots、repo_summaries、digest_editions、digest_items。
+詳見 [docs/email.md](email.md)。
 
-## `scripts/`
+### `scripts/agent-digest.mjs`
 
-資料庫與資料更新腳本。
+Digest 更新腳本，適合 Claude Code 等無法直連 PostgreSQL 的環境。透過 HTTPS 把結果 POST 到 Render，由 Render 負責寫入資料庫。
 
-- `apply-schema.mjs`：套用 NeonDB schema。
-- `update-digest.mjs`：抓取 GitHub 資料、產生摘要 payload、寫入 NeonDB。
+詳見 [docs/digest-update.md](digest-update.md)。
 
-## `docs/`
+### `.claude/commands/`
 
-規劃與維運文件。
+Claude Code skill 定義檔。在 Claude Code 中輸入 `/update-digest` 或 `/send-digest-email` 即可觸發對應流程。
 
-- `github-digest-automation-plan.md`：GitHub 爬取、摘要生成、NeonDB 欄位更新格式與後續自動化計畫。
-- `project-structure.md`：本文件。
-
-## `tools/`
-
-非 production runtime 的設計輔助工具。
-
-- `tools/design/design-canvas.jsx`
-- `tools/design/tweaks-panel.jsx`
-
-這些檔案目前沒有被 `index.html` 載入，移到 `tools/` 後可降低根目錄雜訊。
+---
 
 ## 不提交的本機檔案
 
-以下檔案或資料夾只留在本機，不應提交到 Git：
+以下已在 `.gitignore` 排除，請勿提交：
 
-- `.env`
-- `.env.*`
-- `.codex_tmp/`
-- `.design-canvas.state.json`
-- `AGENTS.md`
-- `node_modules/`
-- `dist/`
+```
+.env
+.env.*
+node_modules/
+dist/
+.codex_tmp/
+```
