@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { createServer } from "node:http";
 import pg from "pg";
@@ -26,6 +26,9 @@ const types = {
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
 };
 
 function sendJson(res, status, body) {
@@ -197,24 +200,14 @@ async function handleInternalSendEmail(req, res) {
   try { body = JSON.parse(await readBody(req)); }
   catch { sendJson(res, 400, { error: "invalid_json" }); return; }
 
-  const { subject, html, screenshot, to } = body;
+  const { subject, html, to } = body;
   if (!subject || !html) { sendJson(res, 400, { error: "subject and html are required" }); return; }
-
-  // Build attachments list for Resend (base64 inline)
-  const attachments = [];
-  if (screenshot) {
-    attachments.push({
-      filename: "digest-screenshot.jpg",
-      content: screenshot, // already base64
-    });
-  }
 
   const payload = {
     from: "Daily AI Digest <onboarding@resend.dev>",
     to: [to || "jjaass9507@gmail.com"],
     subject,
     html,
-    ...(attachments.length ? { attachments } : {}),
   };
 
   const r = await fetch("https://api.resend.com/emails", {
@@ -230,6 +223,23 @@ async function handleInternalSendEmail(req, res) {
   if (!r.ok) throw new Error(`Resend API ${r.status}: ${JSON.stringify(result)}`);
 
   sendJson(res, 200, { ok: true, id: result.id });
+}
+
+async function handleInternalScreenshot(req, res) {
+  if (!INTERNAL_API_KEY) { sendJson(res, 503, { error: "INTERNAL_API_KEY not configured" }); return; }
+  const auth = req.headers["authorization"] || "";
+  if (auth !== `Bearer ${INTERNAL_API_KEY}`) { sendJson(res, 401, { error: "unauthorized" }); return; }
+
+  let body;
+  try { body = JSON.parse(await readBody(req)); }
+  catch { sendJson(res, 400, { error: "invalid_json" }); return; }
+
+  const { screenshot } = body;
+  if (!screenshot) { sendJson(res, 400, { error: "screenshot (base64) required" }); return; }
+
+  await writeFile(join(ROOT, "screenshot-today.jpg"), Buffer.from(screenshot, "base64"));
+  const url = `${process.env.RENDER_URL || ""}/screenshot-today.jpg`;
+  sendJson(res, 200, { ok: true, url });
 }
 
 async function serveStatic(req, res) {
@@ -268,6 +278,10 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && req.url === "/internal/send-email") {
       await handleInternalSendEmail(req, res);
+      return;
+    }
+    if (req.method === "POST" && req.url === "/internal/screenshot") {
+      await handleInternalScreenshot(req, res);
       return;
     }
     if (req.url === "/api/digest/editions") {

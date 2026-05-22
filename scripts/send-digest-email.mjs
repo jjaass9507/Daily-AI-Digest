@@ -16,8 +16,9 @@ const RENDER_URL = process.env.RENDER_URL || 'https://daily-ai-digest-36zh.onren
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
 const EMAIL_TO = process.env.EMAIL_TO || 'jjaass9507@gmail.com';
 
-// Screenshot via CID is not supported with Resend; email is sent without inline image.
-const screenshotPath = null;
+const args = process.argv.slice(2);
+const ssIdx = args.indexOf('--screenshot');
+const screenshotPath = ssIdx !== -1 ? args[ssIdx + 1] : null;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -42,7 +43,7 @@ async function fetchDigest() {
 
 // ── build HTML ───────────────────────────────────────────────────────────────
 
-function buildHtml(digest, hasScreenshot) {
+function buildHtml(digest, screenshotUrl) {
   const picks = (digest.picks || []).slice(0, 15);
   const mc = digest.modelCounts || {};
   const allStats = [
@@ -133,11 +134,11 @@ function buildHtml(digest, hasScreenshot) {
     </table>
   </td></tr>
 
-  ${hasScreenshot ? `
+  ${screenshotUrl ? `
   <!-- ── SCREENSHOT ── -->
   <tr><td style="padding-bottom:14px">
     <div style="border-radius:14px;overflow:hidden;box-shadow:0 6px 28px rgba(0,0,0,0.12)">
-      <img src="cid:digest-screenshot" width="100%" style="display:block;max-width:100%;border-radius:14px" alt="Daily AI Digest 網頁截圖">
+      <img src="${screenshotUrl}" width="100%" style="display:block;max-width:100%;border-radius:14px" alt="Daily AI Digest 網頁截圖">
     </div>
   </td></tr>
   ` : ''}
@@ -190,14 +191,28 @@ async function main() {
   console.log('Fetching digest data...');
   const digest = await fetchDigest();
 
-  const hasScreenshot = !!(screenshotPath && existsSync(screenshotPath));
-  if (screenshotPath && !hasScreenshot) {
+  let screenshotUrl = null;
+  if (screenshotPath && existsSync(screenshotPath)) {
+    console.log('Uploading screenshot to Render...');
+    const screenshot = readFileSync(screenshotPath).toString('base64');
+    const upRes = await fetch(`${RENDER_URL}/internal/screenshot`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${INTERNAL_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ screenshot }),
+    });
+    if (upRes.ok) {
+      const upData = await upRes.json();
+      screenshotUrl = upData.url;
+      console.log(`✓ Screenshot uploaded: ${screenshotUrl}`);
+    } else {
+      console.warn('⚠ Screenshot upload failed, sending without image');
+    }
+  } else if (screenshotPath) {
     console.warn(`⚠ Screenshot not found at ${screenshotPath}, sending without image`);
   }
 
-  const html = buildHtml(digest, hasScreenshot);
+  const html = buildHtml(digest, screenshotUrl);
   const subject = `${digest.edition || 'Daily AI Digest'} ${digest.dateLabel || ''} · 今日 AI 開源精選`;
-  const screenshot = hasScreenshot ? readFileSync(screenshotPath).toString('base64') : null;
 
   console.log(`Posting to Render /internal/send-email...`);
   const res = await fetch(`${RENDER_URL}/internal/send-email`, {
@@ -206,7 +221,7 @@ async function main() {
       'Authorization': `Bearer ${INTERNAL_API_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ subject, html, screenshot, to: EMAIL_TO }),
+    body: JSON.stringify({ subject, html, to: EMAIL_TO }),
   });
 
   const text = await res.text();
