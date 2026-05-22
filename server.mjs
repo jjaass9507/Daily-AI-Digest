@@ -9,8 +9,7 @@ const { Pool } = pg;
 const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || "";
-const GMAIL_USER = process.env.GMAIL_USER || "";
-const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD || "";
+const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
 const ROOT = process.cwd();
 
 const pool = DATABASE_URL
@@ -189,8 +188,8 @@ async function handleInternalSendEmail(req, res) {
   if (!INTERNAL_API_KEY) { sendJson(res, 503, { error: "INTERNAL_API_KEY not configured" }); return; }
   const auth = req.headers["authorization"] || "";
   if (auth !== `Bearer ${INTERNAL_API_KEY}`) { sendJson(res, 401, { error: "unauthorized" }); return; }
-  if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
-    sendJson(res, 503, { error: "GMAIL_USER / GMAIL_APP_PASSWORD not configured on server" });
+  if (!RESEND_API_KEY) {
+    sendJson(res, 503, { error: "RESEND_API_KEY not configured on server" });
     return;
   }
 
@@ -201,30 +200,36 @@ async function handleInternalSendEmail(req, res) {
   const { subject, html, screenshot, to } = body;
   if (!subject || !html) { sendJson(res, 400, { error: "subject and html are required" }); return; }
 
-  const { default: nodemailer } = await import("nodemailer");
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
-  });
-
+  // Build attachments list for Resend (base64 inline)
   const attachments = [];
   if (screenshot) {
     attachments.push({
       filename: "digest-screenshot.jpg",
-      content: Buffer.from(screenshot, "base64"),
-      cid: "digest-screenshot",
+      content: screenshot, // already base64
     });
   }
 
-  await transporter.sendMail({
-    from: `"Daily AI Digest" <${GMAIL_USER}>`,
-    to: to || "jjaass9507@gmail.com",
+  const payload = {
+    from: "Daily AI Digest <onboarding@resend.dev>",
+    to: [to || "jjaass9507@gmail.com"],
     subject,
     html,
-    attachments,
+    ...(attachments.length ? { attachments } : {}),
+  };
+
+  const r = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
   });
 
-  sendJson(res, 200, { ok: true });
+  const result = await r.json();
+  if (!r.ok) throw new Error(`Resend API ${r.status}: ${JSON.stringify(result)}`);
+
+  sendJson(res, 200, { ok: true, id: result.id });
 }
 
 async function serveStatic(req, res) {
