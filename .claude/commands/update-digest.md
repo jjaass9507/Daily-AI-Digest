@@ -98,7 +98,7 @@ Authorization: Bearer $GITHUB_TOKEN  （若有設定）
 {
   "date": "YYYY-MM-DD",
   "dateLabel": "2026年5月21日 週四",
-  "edition": "第 N 期",
+  "edition": "第 N 期",  // N = 距離 2026-05-21 的天數 + 1
   "theme": "今日值得追蹤的 AI 開源專案",
   "totalScanned": N,
   "curated": 15,
@@ -110,7 +110,8 @@ Authorization: Bearer $GITHUB_TOKEN  （若有設定）
 }
 ```
 
-`edition` 計算：`第 ${今年第幾天} 期`
+`edition` 計算：以 2026-05-21（Asia/Taipei）為第 1 期，每天加 1。
+公式：`第 ${daysSince("2026-05-21") + 1} 期`（今天 2026-05-23 = 第 3 期）
 
 ### 5. POST 到 Render
 
