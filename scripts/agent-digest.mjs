@@ -122,9 +122,9 @@ function makeCodePreview(repo) {
 function scoreRepo(repo) {
   const pushedAt = new Date(repo.pushed_at || repo.updated_at || repo.created_at).getTime();
   const recencyDays = Math.max(1, (Date.now() - pushedAt) / 86400e3);
-  const starScore = Math.log10(Math.max(10, repo.stargazers_count)) * 18;
-  const forkScore = Math.log10(Math.max(5, repo.forks_count + 1)) * 8;
-  const recencyScore = Math.max(0, 18 - recencyDays);
+  const starScore = Math.log10(Math.max(10, repo.stargazers_count)) * 8;
+  const forkScore = Math.log10(Math.max(5, repo.forks_count + 1)) * 4;
+  const recencyScore = Math.max(0, 30 - recencyDays * 3);
   const topicScore = (repo.topics || []).length * 1.5;
   return Number((starScore + forkScore + recencyScore + topicScore).toFixed(2));
 }
@@ -136,7 +136,7 @@ async function githubJson(url) {
 }
 
 async function searchRepos(query, perPage = 12) {
-  return githubJson(`${GITHUB_API}/search/repositories?q=${encodeURIComponent(query)}&sort=stars&order=desc&per_page=${perPage}`);
+  return githubJson(`${GITHUB_API}/search/repositories?q=${encodeURIComponent(query)}&sort=updated&order=desc&per_page=${perPage}`);
 }
 
 async function fetchReadme(repo) {
@@ -182,7 +182,7 @@ function toDigestItem(repo, rank, readmeText, readmeSha) {
 
 async function main() {
   const digestDate = isoDate();
-  const since = new Date(Date.now() - 14 * 86400e3).toISOString().slice(0, 10);
+  const since = new Date(Date.now() - 3 * 86400e3).toISOString().slice(0, 10);
   const queries = [
     `claude anthropic in:name,description,topics pushed:>${since}`,
     `gemini google-ai in:name,description,topics pushed:>${since}`,

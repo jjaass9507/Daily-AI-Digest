@@ -32,12 +32,14 @@ ai agent mcp in:name,description,topics pushed:>SINCE
 rag embedding vector in:name,description,topics pushed:>SINCE
 ```
 
-`SINCE` = 今天往前 14 天的日期（ISO 格式）。
+`SINCE` = 今天往前 **3 天**的日期（ISO 格式）。
+
+每個 query 加上 `&sort=updated&order=desc`，讓 GitHub 優先回傳最近有動作的 repo。
 
 排序分數公式：
-- `starScore = log10(max(10, stars)) * 18`
-- `forkScore = log10(max(5, forks+1)) * 8`
-- `recencyScore = max(0, 18 - daysSincePush)`
+- `starScore = log10(max(10, stars)) * 8`
+- `forkScore = log10(max(5, forks+1)) * 4`
+- `recencyScore = max(0, 30 - daysSincePush * 3)`
 - `topicScore = topicsCount * 1.5`
 - `score = starScore + forkScore + recencyScore + topicScore`
 
