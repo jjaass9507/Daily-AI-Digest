@@ -4,7 +4,7 @@
 const GITHUB_API = "https://api.github.com";
 const CACHE_KEY = "daily-digest-data-zh-v3";
 const STARS_KEY = "daily-digest-stars-v1";
-const CACHE_TTL = 30 * 60 * 1000;
+const CACHE_TTL = 5 * 60 * 1000;
 
 window.MODEL_COLORS = window.MODEL_COLORS || {
   Claude: { fg: "#c96442", bg: "rgba(201,100,66,0.10)", ring: "rgba(201,100,66,0.35)" },

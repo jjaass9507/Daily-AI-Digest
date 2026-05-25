@@ -479,6 +479,15 @@ function V3App({ themeMode = "dark", typeScale = 1 }) {
               />
               <span style={{ fontFamily: "var(--c-mono)", fontSize: 10.5, color: "rgba(255,255,255,0.4)" }}>⌘K</span>
             </div>
+            <button
+              onClick={() => { window.clearDigestCache?.(); location.reload(); }}
+              title="清除快取並重新載入"
+              style={{
+                padding: "6px 10px", borderRadius: 999,
+                background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.7)",
+                border: "0.5px solid rgba(255,255,255,0.15)", cursor: "pointer",
+                fontSize: 14, lineHeight: 1,
+              }}>↺</button>
             <button style={{
               padding: "6px 14px", borderRadius: 999,
               background: "white", color: "black",
