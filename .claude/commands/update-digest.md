@@ -25,21 +25,21 @@ unset DATABASE_URL
 用以下五個 query，各取 12 個結果，去除 fork，合併去重後依分數排序，取前 15 名：
 
 ```
-claude anthropic in:name,description,topics pushed:>SINCE
-gemini google-ai in:name,description,topics pushed:>SINCE
-chatgpt openai in:name,description,topics pushed:>SINCE
-ai agent mcp in:name,description,topics pushed:>SINCE
-rag embedding vector in:name,description,topics pushed:>SINCE
+claude anthropic stars:>100 in:name,description,topics pushed:>SINCE
+gemini google-ai stars:>100 in:name,description,topics pushed:>SINCE
+chatgpt openai stars:>100 in:name,description,topics pushed:>SINCE
+ai agent mcp stars:>100 in:name,description,topics pushed:>SINCE
+rag embedding vector stars:>100 in:name,description,topics pushed:>SINCE
 ```
 
-`SINCE` = 今天往前 **3 天**的日期（ISO 格式）。
+`SINCE` = 今天往前 **7 天**的日期（ISO 格式）。
 
 每個 query 加上 `&sort=updated&order=desc`，讓 GitHub 優先回傳最近有動作的 repo。
 
 排序分數公式：
-- `starScore = log10(max(10, stars)) * 8`
+- `starScore = log10(max(10, stars)) * 12`
 - `forkScore = log10(max(5, forks+1)) * 4`
-- `recencyScore = max(0, 30 - daysSincePush * 3)`
+- `recencyScore = daysSincePush <= 1 ? 30 : max(0, 25 - (daysSincePush - 1) * 5)`
 - `topicScore = topicsCount * 1.5`
 - `score = starScore + forkScore + recencyScore + topicScore`
 
