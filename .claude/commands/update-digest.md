@@ -20,9 +20,15 @@
 unset DATABASE_URL
 ```
 
-### 1. 從 GitHub 搜尋候選 repo
+### 1a. 取得近期已出現過的 repo 排除名單
 
-用以下五個 query，各取 12 個結果，去除 fork，合併去重後依分數排序，取前 15 名：
+先呼叫 `GET $RENDER_URL/api/digest/editions` 取得所有期號，再逐一呼叫
+`GET $RENDER_URL/api/digest/{date}` 取得每期的 picks，收集所有出現過的 `repo.id`
+組成排除名單（`seen_ids`）。這樣就不會重複推薦已出現的 repo。
+
+### 1b. 從 GitHub 搜尋候選 repo（每 query 各取 20 個）
+
+用以下五個 query，**各取 20 個結果**，去除 fork，並排除 `seen_ids` 中已出現過的 repo：
 
 ```
 claude anthropic stars:>100 in:name,description,topics pushed:>SINCE
@@ -42,6 +48,12 @@ rag embedding vector stars:>100 in:name,description,topics pushed:>SINCE
 - `recencyScore = daysSincePush <= 1 ? 30 : max(0, 25 - (daysSincePush - 1) * 5)`
 - `topicScore = topicsCount * 1.5`
 - `score = starScore + forkScore + recencyScore + topicScore`
+
+**名額分配（每 query 固定 3 個，共 15 個）**：
+
+不做全局排序後取 top 15。改為：對每個 query 的候選結果按分數排序，各取前 3 個加入最終名單（全局去重：同一 repo 不同 query 都排到前 3 時，歸屬第一個 query，其他 query 補下一名）。若某 query 找不夠 3 個新 repo，從其他 query 的剩餘候選補足到 15 個。
+
+這樣可確保五個主題（Claude、Gemini、ChatGPT、Agent/MCP、RAG）都有代表。
 
 GitHub API headers：
 ```
@@ -88,6 +100,7 @@ Authorization: Bearer $GITHUB_TOKEN  （若有設定）
 每個 item 同時需要：
 - `id`：repo.id（字串）
 - `rank`：排序（1 開始）
+- `score`：按上面公式計算的分數（數值）
 - `name`、`author`、`fullName`、`githubUrl`
 - `stars`、`forks`、`starsToday`（無歷史資料時為 0）
 - `models`：從 name/description/topics 偵測 Claude / Gemini / ChatGPT，至少一個
@@ -137,3 +150,5 @@ Content-Type: application/json
 - 成功 POST 並收到 `ok: true`
 - `saved` 等於 picks 的數量（通常是 15）
 - 每個 pick 的 summary / whyValuable / steps 是針對該 repo 真正寫的，不是套模板
+- 15 個 picks 中沒有出現在近期 digest 的 repo（重複率 = 0）
+- 五個 query 主題都有代表（每個主題至少 2–3 個）
