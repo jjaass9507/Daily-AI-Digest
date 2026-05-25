@@ -181,9 +181,9 @@ function makeCodePreview(repo) {
 function scoreRepo(repo) {
   const pushedAt = new Date(repo.pushed_at || repo.updated_at || repo.created_at).getTime();
   const recencyDays = Math.max(1, (Date.now() - pushedAt) / 86400e3);
-  const starScore = Math.log10(Math.max(10, repo.stargazers_count)) * 8;
+  const starScore = Math.log10(Math.max(10, repo.stargazers_count)) * 12;
   const forkScore = Math.log10(Math.max(5, repo.forks_count + 1)) * 4;
-  const recencyScore = Math.max(0, 30 - recencyDays * 3);
+  const recencyScore = recencyDays <= 1 ? 30 : Math.max(0, 25 - (recencyDays - 1) * 5);
   const topicScore = (repo.topics || []).length * 1.5;
   return Number((starScore + forkScore + recencyScore + topicScore).toFixed(2));
 }
@@ -362,13 +362,13 @@ async function saveDigest(client, digestDate, data, reposById) {
 
 async function main() {
   const digestDate = taipeiDate();
-  const since = taipeiDate(new Date(Date.now() - 3 * 86400e3));
+  const since = taipeiDate(new Date(Date.now() - 7 * 86400e3));
   const queries = [
-    `claude anthropic in:name,description,topics pushed:>${since}`,
-    `gemini google-ai in:name,description,topics pushed:>${since}`,
-    `chatgpt openai in:name,description,topics pushed:>${since}`,
-    `ai agent mcp in:name,description,topics pushed:>${since}`,
-    `rag embedding vector in:name,description,topics pushed:>${since}`,
+    `claude anthropic stars:>100 in:name,description,topics pushed:>${since}`,
+    `gemini google-ai stars:>100 in:name,description,topics pushed:>${since}`,
+    `chatgpt openai stars:>100 in:name,description,topics pushed:>${since}`,
+    `ai agent mcp stars:>100 in:name,description,topics pushed:>${since}`,
+    `rag embedding vector stars:>100 in:name,description,topics pushed:>${since}`,
   ];
 
   const results = await Promise.allSettled(queries.map((query) => searchRepos(query)));
