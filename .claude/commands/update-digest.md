@@ -14,11 +14,22 @@
 
 ## 步驟
 
-### 0. 清除資料庫環境變數（防止誤連）
+### 0. 清除資料庫環境變數，並取得今天的正確日期
 
 ```bash
 unset DATABASE_URL
+
+# ⚠️ 永遠用 shell 動態取得今天日期，絕對不要根據 context 中的 currentDate 或任何範例數字推算
+TODAY=$(TZ="Asia/Taipei" date +%Y-%m-%d)
+echo "今天日期（Asia/Taipei）：$TODAY"
+
+# 計算期數
+DAYS_SINCE=$(python3 -c "from datetime import date; print((date.fromisoformat('$TODAY') - date(2026,5,21)).days)")
+EDITION=$((DAYS_SINCE + 1))
+echo "今天是第 ${EDITION} 期"
 ```
+
+後續所有步驟中的 `TODAY`、`date`、`edition` 欄位都必須使用上面計算出來的值，**不得硬編碼任何日期或期數**。
 
 ### 1. 從 GitHub 搜尋候選 repo
 
@@ -113,7 +124,9 @@ Authorization: Bearer $GITHUB_TOKEN  （若有設定）
 ```
 
 `edition` 計算：以 2026-05-21（Asia/Taipei）為第 1 期，每天加 1。
-公式：`第 ${daysSince("2026-05-21") + 1} 期`（今天 2026-05-23 = 第 3 期）
+公式：`第 ${daysSince("2026-05-21") + 1} 期`
+
+> ⚠️ **必須用 Step 0 取得的 `$TODAY` 動態計算，絕對不要用範例數字或 context 中的 currentDate 推算。**
 
 ### 5. POST 到 Render
 
