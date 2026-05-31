@@ -10,6 +10,7 @@
     "setup:digest": "node scripts/apply-schema.mjs && node scripts/update-digest.mjs"
   },
   "dependencies": {
+    "nodemailer": "^8.0.10",
     "pg": "^8.13.1"
   },
   "engines": {

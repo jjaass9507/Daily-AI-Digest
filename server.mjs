@@ -3,12 +3,17 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { createServer } from "node:http";
 import pg from "pg";
+import nodemailer from "nodemailer";
 
 const { Pool } = pg;
 
 const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const ROOT = process.cwd();
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || "";
+const GMAIL_USER = process.env.GMAIL_USER || "";
+const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD || "";
+const EMAIL_TO = process.env.EMAIL_TO || "jjaass9507@gmail.com";
 
 const pool = DATABASE_URL
   ? new Pool({
@@ -57,6 +62,40 @@ async function handleDigest(req, res) {
   sendJson(res, 200, rows[0].payload);
 }
 
+async function handleSendEmail(req, res) {
+  const auth = req.headers["authorization"] || "";
+  if (!INTERNAL_API_KEY || auth !== `Bearer ${INTERNAL_API_KEY}`) {
+    sendJson(res, 401, { error: "unauthorized" });
+    return;
+  }
+  if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
+    sendJson(res, 500, { error: "GMAIL_USER or GMAIL_APP_PASSWORD not configured" });
+    return;
+  }
+
+  let body = "";
+  for await (const chunk of req) body += chunk;
+  const { subject, html } = JSON.parse(body);
+  if (!subject || !html) {
+    sendJson(res, 400, { error: "subject and html are required" });
+    return;
+  }
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
+  });
+
+  await transporter.sendMail({
+    from: `"Daily AI Digest" <${GMAIL_USER}>`,
+    to: EMAIL_TO,
+    subject,
+    html,
+  });
+
+  sendJson(res, 200, { ok: true });
+}
+
 async function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = decodeURIComponent(url.pathname);
@@ -89,6 +128,10 @@ const server = createServer(async (req, res) => {
     }
     if (req.url?.startsWith("/api/digest/")) {
       await handleDigest(req, res);
+      return;
+    }
+    if (req.method === "POST" && req.url === "/internal/send-email") {
+      await handleSendEmail(req, res);
       return;
     }
     await serveStatic(req, res);
