@@ -185,12 +185,23 @@ async function searchRepos(query, token, perPage = 10) {
 // ─── Main loader ─────────────────────────────────────────────────────────────
 
 async function loadDigestData(token = null) {
-  // Try pre-built digest.json first (written by scheduled agent)
+  // Try Vercel API endpoint first (reads from NeonDB)
+  try {
+    const res = await fetch("/api/digest/today");
+    if (res.ok) {
+      const prebuilt = await res.json();
+      if (prebuilt?.picks?.length) {
+        console.log("[digest] loaded from /api/digest/today");
+        return { data: prebuilt, source: "api" };
+      }
+    }
+  } catch {}
+
+  // Fall back to pre-built digest.json (local dev / static deploy)
   try {
     const res = await fetch("./digest.json");
     if (res.ok) {
       const prebuilt = await res.json();
-      // Accept if generated within the last 26 hours
       if (prebuilt?.date && Date.now() - new Date(prebuilt.date).getTime() < 26 * 3600e3) {
         console.log("[digest] loaded from digest.json");
         return { data: prebuilt, source: "prebuilt" };

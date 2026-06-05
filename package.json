@@ -7,6 +7,7 @@
     "update": "node scripts/daily-update.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0"
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@neondatabase/serverless": "^0.10.4"
   }
 }
