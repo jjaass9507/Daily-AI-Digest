@@ -26,7 +26,7 @@ GitHub Actions（每天 8am 台灣時間）
 |---|---|---|
 | Digest 更新 | 從 GitHub 抓 AI repo，寫中文摘要，存入資料庫 | [docs/digest-update.md](docs/digest-update.md) |
 | 前端網站 | 顯示每日精選的互動式網頁 | [docs/frontend.md](docs/frontend.md) |
-| 電子報 | 生成 HTML 電子報並透過 Brevo 寄出 | [docs/email.md](docs/email.md) |
+| 電子報 | 生成 HTML 電子報並透過 Gmail API 寄出 | [docs/email.md](docs/email.md) |
 | 自動排程 | GitHub Actions 每天自動寄信 | [docs/scheduling.md](docs/scheduling.md) |
 | API | Server 提供的 REST API | [docs/api.md](docs/api.md) |
 | 資料庫 | Neon Postgres 的 schema 設計 | [docs/database.md](docs/database.md) |
@@ -51,7 +51,7 @@ npm start
 
 - **Server & 前端**：[Render](https://render.com)（`render.yaml` 自動設定）
 - **資料庫**：[Neon Postgres](https://neon.tech)
-- **Email API**：[Brevo](https://brevo.com)
+- **Email API**：Gmail API（OAuth2）
 - **自動排程**：GitHub Actions
 
 ## 相關設定
