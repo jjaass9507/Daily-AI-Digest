@@ -162,7 +162,7 @@ Authorization: Bearer <INTERNAL_API_KEY>
 
 ### `POST /internal/send-email`
 
-透過 Brevo API 寄送電子報。收件人由 Render 的 `EMAIL_TO` 環境變數決定。
+透過 Gmail OAuth2 API 寄送電子報。收件人由 Render 的 `EMAIL_TO` 環境變數決定。
 
 **Request Body：**
 ```json
@@ -180,27 +180,31 @@ Authorization: Bearer <INTERNAL_API_KEY>
 **錯誤：**
 - `400` — 缺少 `subject` 或 `html`
 - `401` — API key 錯誤
-- `502` — Brevo API 回傳錯誤（`detail` 欄位含原始錯誤）
-- `503` — `INTERNAL_API_KEY` 或 `BREVO_API_KEY` 未設定
+- `502` — Gmail API 回傳錯誤（`detail` 欄位含原始錯誤）
+- `503` — `INTERNAL_API_KEY` 或 Gmail OAuth2 環境變數未設定
 
 ---
 
 ### `POST /internal/screenshot`
 
-儲存截圖到 server 本機，並回傳可公開存取的 URL。
+儲存截圖到 server 本機（固定檔名 `screenshot-today.jpg`），並回傳可公開存取的 URL。URL 由 Render 的 `RENDER_URL` 環境變數組成。
 
 **Request Body：**
 ```json
 {
-  "image": "<base64-encoded-jpeg>",
-  "filename": "digest-2026-05-22.jpg"
+  "screenshot": "<base64-encoded-jpeg>"
 }
 ```
 
 **Response：**
 ```json
-{ "ok": true, "url": "https://your-app.onrender.com/screenshots/digest-2026-05-22.jpg" }
+{ "ok": true, "url": "https://your-app.onrender.com/screenshot-today.jpg" }
 ```
+
+**錯誤：**
+- `400` — 缺少 `screenshot`
+- `401` — API key 錯誤
+- `503` — `INTERNAL_API_KEY` 未設定
 
 ---
 
