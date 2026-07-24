@@ -30,7 +30,7 @@ function heroBg(pick) {
 function ModelChip({ model, inverse = false }) {
   const color = COLORS[model] || COLORS.Claude;
   return (
-    <span className={inverse ? "model-chip inverse" : "model-chip"} style={{ "--chip": color.fg, "--chip-bg": color.bg }}>
+    <span className={inverse ? "model-chip inverse" : "model-chip"} style={{ "--chip": color.fg, "--chip-bg": color.bg }} aria-label={`模型 ${model}`}>
       <span />
       {model}
     </span>
@@ -796,6 +796,158 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
             position: static;
           }
         }
+        @media (prefers-color-scheme: dark) {
+          .product-page {
+            background: #0a0a0c;
+            color: rgba(255,255,255,0.92);
+          }
+          .product-nav {
+            background: rgba(10,10,12,0.78);
+            border-bottom-color: rgba(255,255,255,0.12);
+          }
+          .brand {
+            color: rgba(255,255,255,0.92);
+          }
+          .search-box {
+            border-color: rgba(255,255,255,0.12);
+            background: #1c1c1f;
+            color: rgba(255,255,255,0.92);
+          }
+          button,
+          .nav-actions a,
+          .action-row a {
+            background: #1c1c1f;
+            border-color: rgba(255,255,255,0.12);
+            color: rgba(255,255,255,0.92);
+          }
+          .primary-nav {
+            background: #0071e3;
+            border-color: #0071e3;
+            color: #ffffff;
+          }
+          .edition-select {
+            background-color: #1c1c1f;
+            border-color: rgba(255,255,255,0.12);
+            color: rgba(255,255,255,0.92);
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23aaa'/%3E%3C/svg%3E");
+          }
+          .filter-chip {
+            background: #1c1c1f;
+            border-color: rgba(255,255,255,0.12);
+            color: rgba(255,255,255,0.6);
+          }
+          .filter-chip.type.active {
+            background: rgba(255,255,255,0.92);
+            border-color: rgba(255,255,255,0.92);
+            color: #0a0a0c;
+          }
+          .filter-clear {
+            color: #0071e3;
+          }
+          .filter-meta {
+            color: rgba(255,255,255,0.6);
+          }
+          .settings-popover {
+            background: #1c1c1f;
+            border-color: rgba(255,255,255,0.12);
+            box-shadow: 0 18px 40px rgba(0,0,0,0.5);
+          }
+          .settings-popover label {
+            color: rgba(255,255,255,0.6);
+          }
+          .settings-popover input {
+            border-color: rgba(255,255,255,0.12);
+            background: #0a0a0c;
+            color: rgba(255,255,255,0.92);
+          }
+          .filter-bar {
+            background: rgba(10,10,12,0.88);
+            border-top-color: rgba(255,255,255,0.12);
+            border-bottom-color: rgba(255,255,255,0.12);
+          }
+          .product-hero {
+            background: #0a0a0c;
+          }
+          .hero-copy {
+            color: rgba(255,255,255,0.6);
+          }
+          .hero-cta button {
+            background: #1c1c1f;
+            color: rgba(255,255,255,0.92);
+          }
+          .hero-stats {
+            border-color: rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.12);
+          }
+          .stat-block {
+            background: #1c1c1f;
+          }
+          .stat-block span {
+            color: rgba(255,255,255,0.6);
+          }
+          .feature-section {
+            background: #1c1c1f;
+            border-top-color: rgba(255,255,255,0.12);
+          }
+          .feature-section.alt {
+            background: #111113;
+          }
+          .eyebrow-row i {
+            background: rgba(255,255,255,0.24);
+          }
+          .section-summary {
+            color: rgba(255,255,255,0.6);
+          }
+          .stack-pill {
+            color: rgba(255,255,255,0.6);
+            background: #0a0a0c;
+          }
+          .feature-copy h3,
+          .code-panel h3 {
+            color: rgba(255,255,255,0.6);
+          }
+          .feature-copy p {
+            color: rgba(255,255,255,0.92);
+          }
+          .feature-copy li {
+            border-top-color: rgba(255,255,255,0.12);
+          }
+          .feature-copy li:last-child {
+            border-bottom-color: rgba(255,255,255,0.12);
+          }
+          .feature-copy li p {
+            color: rgba(255,255,255,0.6);
+          }
+          .code-panel pre {
+            background: #0a0a0c;
+            color: rgba(255,255,255,0.92);
+          }
+          .bento-section {
+            background: #161618;
+            border-top-color: rgba(255,255,255,0.12);
+          }
+          .bento-card {
+            background: #1c1c1f;
+          }
+          .trend-row {
+            border-top-color: rgba(255,255,255,0.12);
+          }
+          .trend-row span:first-child {
+            color: rgba(255,255,255,0.6);
+          }
+          .mix-row i {
+            background: rgba(255,255,255,0.12);
+          }
+          .empty-state {
+            background: #1c1c1f;
+            color: rgba(255,255,255,0.6);
+          }
+          .to-top {
+            background: rgba(28,28,31,0.9);
+            border-color: rgba(255,255,255,0.12);
+            color: rgba(255,255,255,0.92);
+          }
+        }
       `}</style>
 
       <header className="product-nav">
@@ -869,7 +1021,7 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
             <div className="hero-stats">
               <StatBlock value={(data?.totalScanned || 0).toLocaleString()} label="掃描 repo" />
               <StatBlock value={data?.curated || 0} label="今日精選" />
-              <StatBlock value={`+${totalNewStars.toLocaleString()}`} label="本機記錄新星" />
+              <StatBlock value={`+${totalNewStars.toLocaleString()}`} label="今日新增星數" />
               <StatBlock value={totalStars.toLocaleString()} label="精選總星數" />
             </div>
           </div>
