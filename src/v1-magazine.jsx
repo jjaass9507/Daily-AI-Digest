@@ -1,6 +1,6 @@
 // Apple.com product-page style implementation for Daily AI Digest.
 
-const { useMemo, useState } = React;
+const { useEffect, useMemo, useState } = React;
 
 const COLORS = window.MODEL_COLORS || {
   Claude: { fg: "#c96442", bg: "rgba(201,100,66,0.10)" },
@@ -119,17 +119,45 @@ function FeatureSection({ pick, index, total }) {
 
 function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache, editions, selectedDate, onSelectDate }) {
   const [query, setQuery] = useState("");
+  const [activeModel, setActiveModel] = useState(null);
+  const [activeType, setActiveType] = useState(null);
+  const [showTop, setShowTop] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tokenDraft, setTokenDraft] = useState(token || "");
 
   const picks = data?.picks || [];
+
+  const availableModels = useMemo(() => {
+    const set = new Set();
+    picks.forEach((pick) => (pick.models || []).forEach((model) => set.add(model)));
+    return [...set];
+  }, [picks]);
+
+  const availableTypes = useMemo(() => {
+    const set = new Set();
+    picks.forEach((pick) => { if (pick.type) set.add(pick.type); });
+    return [...set];
+  }, [picks]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return picks;
-    return picks.filter((pick) => `${pick.name} ${pick.author} ${pick.summary} ${pick.type} ${(pick.models || []).join(" ")} ${(pick.stack || []).join(" ")}`.toLowerCase().includes(q));
-  }, [picks, query]);
+    return picks.filter((pick) => {
+      if (activeModel && !(pick.models || []).includes(activeModel)) return false;
+      if (activeType && pick.type !== activeType) return false;
+      if (!q) return true;
+      return `${pick.name} ${pick.author} ${pick.summary} ${pick.type} ${(pick.models || []).join(" ")} ${(pick.stack || []).join(" ")}`.toLowerCase().includes(q);
+    });
+  }, [picks, query, activeModel, activeType]);
 
-  const featured = filtered[0] || picks[0];
+  const hasActiveFilter = Boolean(activeModel || activeType || query.trim());
+  const clearFilters = () => { setActiveModel(null); setActiveType(null); setQuery(""); };
+
+  useEffect(() => {
+    const onScroll = () => setShowTop(window.scrollY > 600);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
   const totalStars = picks.reduce((sum, pick) => sum + (pick.stars || 0), 0);
   const totalNewStars = picks.reduce((sum, pick) => sum + (pick.starsToday || 0), 0);
 
@@ -637,6 +665,112 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
           color: #6e6e73;
           font-size: 18px;
         }
+        .filter-bar {
+          position: sticky;
+          top: 61px;
+          z-index: 15;
+          background: rgba(255,255,255,0.88);
+          border-top: 1px solid rgba(0,0,0,0.08);
+          border-bottom: 1px solid rgba(0,0,0,0.08);
+          backdrop-filter: blur(22px) saturate(180%);
+        }
+        .filter-inner {
+          max-width: 1080px;
+          margin: 0 auto;
+          padding: 12px 24px;
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          flex-wrap: wrap;
+        }
+        .filter-groups {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+          flex: 1;
+          min-width: 0;
+        }
+        .filter-group {
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+        .filter-group + .filter-group {
+          padding-left: 10px;
+          border-left: 1px solid rgba(0,0,0,0.1);
+        }
+        .filter-chip {
+          border: 1px solid rgba(0,0,0,0.12);
+          border-radius: 999px;
+          background: #ffffff;
+          color: #424245;
+          cursor: pointer;
+          font: inherit;
+          font-size: 13px;
+          font-weight: 600;
+          padding: 6px 14px;
+          white-space: nowrap;
+          transition: background 140ms, color 140ms, border-color 140ms;
+        }
+        .filter-chip.model {
+          color: var(--chip);
+        }
+        .filter-chip.model.active {
+          background: var(--chip);
+          border-color: var(--chip);
+          color: #ffffff;
+        }
+        .filter-chip.type.active {
+          background: #1d1d1f;
+          border-color: #1d1d1f;
+          color: #ffffff;
+        }
+        .filter-meta {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          color: #6e6e73;
+          font-size: 13px;
+          font-weight: 600;
+          white-space: nowrap;
+        }
+        .filter-clear {
+          border: none;
+          background: none;
+          color: #0071e3;
+          cursor: pointer;
+          font: inherit;
+          font-size: 13px;
+          font-weight: 700;
+          padding: 0;
+        }
+        .to-top {
+          position: fixed;
+          right: 24px;
+          bottom: 24px;
+          z-index: 30;
+          width: 46px;
+          height: 46px;
+          border-radius: 50%;
+          border: 1px solid rgba(0,0,0,0.1);
+          background: rgba(255,255,255,0.9);
+          color: #1d1d1f;
+          cursor: pointer;
+          font-size: 20px;
+          line-height: 1;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.16);
+          backdrop-filter: blur(12px);
+          opacity: 0;
+          transform: translateY(12px);
+          pointer-events: none;
+          transition: opacity 220ms, transform 220ms;
+        }
+        .to-top.visible {
+          opacity: 1;
+          transform: translateY(0);
+          pointer-events: auto;
+        }
         @media (max-width: 860px) {
           .nav-inner {
             grid-template-columns: 1fr;
@@ -657,6 +791,9 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
           }
           .product-visual {
             padding: 30px;
+          }
+          .filter-bar {
+            position: static;
           }
         }
       `}</style>
@@ -738,8 +875,66 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
           </div>
         </section>
 
+        {picks.length > 0 && (
+          <div className="filter-bar">
+            <div className="filter-inner">
+              <div className="filter-groups">
+                {availableModels.length > 0 && (
+                  <div className="filter-group">
+                    {availableModels.map((model) => {
+                      const color = COLORS[model] || COLORS.Claude;
+                      const active = activeModel === model;
+                      return (
+                        <button
+                          key={model}
+                          type="button"
+                          aria-pressed={active}
+                          className={active ? "filter-chip model active" : "filter-chip model"}
+                          style={{ "--chip": color.fg }}
+                          onClick={() => setActiveModel(active ? null : model)}
+                        >
+                          {model}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {availableTypes.length > 0 && (
+                  <div className="filter-group">
+                    {availableTypes.map((type) => {
+                      const active = activeType === type;
+                      return (
+                        <button
+                          key={type}
+                          type="button"
+                          aria-pressed={active}
+                          className={active ? "filter-chip type active" : "filter-chip type"}
+                          onClick={() => setActiveType(active ? null : type)}
+                        >
+                          {TYPE_LABELS[type] || type}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="filter-meta">
+                <span>{filtered.length} / {picks.length} 個精選</span>
+                {hasActiveFilter && (
+                  <button type="button" className="filter-clear" onClick={clearFilters}>清除篩選</button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {!data && <div className="empty-state">正在載入 GitHub 精選...</div>}
-        {data && filtered.length === 0 && <div className="empty-state">目前搜尋條件下沒有符合的 repo。</div>}
+        {data && filtered.length === 0 && (
+          <div className="empty-state">
+            目前篩選條件下沒有符合的 repo。
+            {hasActiveFilter && <> <button type="button" className="filter-clear" onClick={clearFilters}>清除篩選</button></>}
+          </div>
+        )}
 
         {filtered.length > 0 && (
           <div id="picks">
@@ -785,6 +980,15 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
           </section>
         )}
       </main>
+
+      <button
+        type="button"
+        className={showTop ? "to-top visible" : "to-top"}
+        aria-label="回到頂部"
+        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      >
+        ↑
+      </button>
     </div>
   );
 }
