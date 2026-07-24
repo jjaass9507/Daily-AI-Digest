@@ -124,6 +124,12 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
   const [showTop, setShowTop] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tokenDraft, setTokenDraft] = useState(token || "");
+  const [dark, setDark] = useState(() => {
+    const saved = typeof localStorage !== "undefined" ? localStorage.getItem("digest-theme") : null;
+    if (saved === "dark") return true;
+    if (saved === "light") return false;
+    return typeof window !== "undefined" && window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)").matches : false;
+  });
 
   const picks = data?.picks || [];
 
@@ -152,17 +158,27 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
   const hasActiveFilter = Boolean(activeModel || activeType || query.trim());
   const clearFilters = () => { setActiveModel(null); setActiveType(null); setQuery(""); };
 
+  const toggleTheme = () => setDark((v) => {
+    const next = !v;
+    try { localStorage.setItem("digest-theme", next ? "dark" : "light"); } catch (e) {}
+    return next;
+  });
+
   useEffect(() => {
     const onScroll = () => setShowTop(window.scrollY > 600);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  useEffect(() => {
+    document.body.classList.toggle("digest-dark", dark);
+  }, [dark]);
   const totalStars = picks.reduce((sum, pick) => sum + (pick.stars || 0), 0);
   const totalNewStars = picks.reduce((sum, pick) => sum + (pick.starsToday || 0), 0);
 
   return (
-    <div className="product-page">
+    <div className={dark ? "product-page dark" : "product-page"}>
       <style>{`
         .product-page {
           min-height: 100%;
@@ -771,6 +787,97 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
           transform: translateY(0);
           pointer-events: auto;
         }
+        .overview-section {
+          padding: 40px 24px;
+          background: #ffffff;
+          border-top: 1px solid rgba(0,0,0,0.08);
+        }
+        .overview-inner {
+          max-width: 1080px;
+          margin: 0 auto;
+        }
+        .overview-title {
+          margin: 0 0 20px;
+          font-size: 22px;
+          font-weight: 800;
+        }
+        .overview-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(240px,1fr));
+          gap: 14px;
+        }
+        .overview-card {
+          text-align: left;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          padding: 18px;
+          border: 1px solid rgba(0,0,0,0.1);
+          border-radius: 16px;
+          background: #f5f5f7;
+          cursor: pointer;
+          transition: transform 140ms, box-shadow 140ms, border-color 140ms;
+        }
+        .overview-card:hover {
+          transform: translateY(-3px);
+          box-shadow: 0 12px 28px rgba(0,0,0,0.12);
+          border-color: rgba(0,0,0,0.18);
+        }
+        .overview-card-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .overview-no {
+          font-family: var(--a-mono);
+          font-size: 12px;
+          font-weight: 700;
+          color: #86868b;
+        }
+        .overview-type {
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: uppercase;
+          color: #0071e3;
+        }
+        .overview-name {
+          margin: 0;
+          font-size: 17px;
+          font-weight: 700;
+          line-height: 1.2;
+        }
+        .overview-tagline {
+          margin: 0;
+          font-size: 13px;
+          line-height: 1.5;
+          color: #6e6e73;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        .overview-card-foot {
+          margin-top: auto;
+          padding-top: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .overview-models {
+          display: inline-flex;
+          gap: 5px;
+        }
+        .overview-dot {
+          width: 9px;
+          height: 9px;
+          border-radius: 50%;
+          display: inline-block;
+        }
+        .overview-stars {
+          font-size: 12px;
+          font-weight: 700;
+          color: #86868b;
+        }
         @media (max-width: 860px) {
           .nav-inner {
             grid-template-columns: 1fr;
@@ -795,158 +902,177 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
           .filter-bar {
             position: static;
           }
+          .overview-grid {
+            grid-template-columns: 1fr 1fr;
+          }
         }
-        @media (prefers-color-scheme: dark) {
-          .product-page {
-            background: #0a0a0c;
-            color: rgba(255,255,255,0.92);
-          }
-          .product-nav {
-            background: rgba(10,10,12,0.78);
-            border-bottom-color: rgba(255,255,255,0.12);
-          }
-          .brand {
-            color: rgba(255,255,255,0.92);
-          }
-          .search-box {
-            border-color: rgba(255,255,255,0.12);
-            background: #1c1c1f;
-            color: rgba(255,255,255,0.92);
-          }
-          button,
-          .nav-actions a,
-          .action-row a {
-            background: #1c1c1f;
-            border-color: rgba(255,255,255,0.12);
-            color: rgba(255,255,255,0.92);
-          }
-          .primary-nav {
-            background: #0071e3;
-            border-color: #0071e3;
-            color: #ffffff;
-          }
-          .edition-select {
-            background-color: #1c1c1f;
-            border-color: rgba(255,255,255,0.12);
-            color: rgba(255,255,255,0.92);
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23aaa'/%3E%3C/svg%3E");
-          }
-          .filter-chip {
-            background: #1c1c1f;
-            border-color: rgba(255,255,255,0.12);
-            color: rgba(255,255,255,0.6);
-          }
-          .filter-chip.type.active {
-            background: rgba(255,255,255,0.92);
-            border-color: rgba(255,255,255,0.92);
-            color: #0a0a0c;
-          }
-          .filter-clear {
-            color: #0071e3;
-          }
-          .filter-meta {
-            color: rgba(255,255,255,0.6);
-          }
-          .settings-popover {
-            background: #1c1c1f;
-            border-color: rgba(255,255,255,0.12);
-            box-shadow: 0 18px 40px rgba(0,0,0,0.5);
-          }
-          .settings-popover label {
-            color: rgba(255,255,255,0.6);
-          }
-          .settings-popover input {
-            border-color: rgba(255,255,255,0.12);
-            background: #0a0a0c;
-            color: rgba(255,255,255,0.92);
-          }
-          .filter-bar {
-            background: rgba(10,10,12,0.88);
-            border-top-color: rgba(255,255,255,0.12);
-            border-bottom-color: rgba(255,255,255,0.12);
-          }
-          .product-hero {
-            background: #0a0a0c;
-          }
-          .hero-copy {
-            color: rgba(255,255,255,0.6);
-          }
-          .hero-cta button {
-            background: #1c1c1f;
-            color: rgba(255,255,255,0.92);
-          }
-          .hero-stats {
-            border-color: rgba(255,255,255,0.12);
-            background: rgba(255,255,255,0.12);
-          }
-          .stat-block {
-            background: #1c1c1f;
-          }
-          .stat-block span {
-            color: rgba(255,255,255,0.6);
-          }
-          .feature-section {
-            background: #1c1c1f;
-            border-top-color: rgba(255,255,255,0.12);
-          }
-          .feature-section.alt {
-            background: #111113;
-          }
-          .eyebrow-row i {
-            background: rgba(255,255,255,0.24);
-          }
-          .section-summary {
-            color: rgba(255,255,255,0.6);
-          }
-          .stack-pill {
-            color: rgba(255,255,255,0.6);
-            background: #0a0a0c;
-          }
-          .feature-copy h3,
-          .code-panel h3 {
-            color: rgba(255,255,255,0.6);
-          }
-          .feature-copy p {
-            color: rgba(255,255,255,0.92);
-          }
-          .feature-copy li {
-            border-top-color: rgba(255,255,255,0.12);
-          }
-          .feature-copy li:last-child {
-            border-bottom-color: rgba(255,255,255,0.12);
-          }
-          .feature-copy li p {
-            color: rgba(255,255,255,0.6);
-          }
-          .code-panel pre {
-            background: #0a0a0c;
-            color: rgba(255,255,255,0.92);
-          }
-          .bento-section {
-            background: #161618;
-            border-top-color: rgba(255,255,255,0.12);
-          }
-          .bento-card {
-            background: #1c1c1f;
-          }
-          .trend-row {
-            border-top-color: rgba(255,255,255,0.12);
-          }
-          .trend-row span:first-child {
-            color: rgba(255,255,255,0.6);
-          }
-          .mix-row i {
-            background: rgba(255,255,255,0.12);
-          }
-          .empty-state {
-            background: #1c1c1f;
-            color: rgba(255,255,255,0.6);
-          }
-          .to-top {
-            background: rgba(28,28,31,0.9);
-            border-color: rgba(255,255,255,0.12);
-            color: rgba(255,255,255,0.92);
-          }
+        .product-page.dark {
+          background: #0a0a0c;
+          color: rgba(255,255,255,0.92);
+        }
+        .product-page.dark .product-nav {
+          background: rgba(10,10,12,0.78);
+          border-bottom-color: rgba(255,255,255,0.12);
+        }
+        .product-page.dark .brand {
+          color: rgba(255,255,255,0.92);
+        }
+        .product-page.dark .search-box {
+          border-color: rgba(255,255,255,0.12);
+          background: #1c1c1f;
+          color: rgba(255,255,255,0.92);
+        }
+        .product-page.dark button,
+        .product-page.dark .nav-actions a,
+        .product-page.dark .action-row a {
+          background: #1c1c1f;
+          border-color: rgba(255,255,255,0.12);
+          color: rgba(255,255,255,0.92);
+        }
+        .product-page.dark .primary-nav {
+          background: #0071e3;
+          border-color: #0071e3;
+          color: #ffffff;
+        }
+        .product-page.dark .edition-select {
+          background-color: #1c1c1f;
+          border-color: rgba(255,255,255,0.12);
+          color: rgba(255,255,255,0.92);
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23aaa'/%3E%3C/svg%3E");
+        }
+        .product-page.dark .filter-chip {
+          background: #1c1c1f;
+          border-color: rgba(255,255,255,0.12);
+          color: rgba(255,255,255,0.6);
+        }
+        .product-page.dark .filter-chip.type.active {
+          background: rgba(255,255,255,0.92);
+          border-color: rgba(255,255,255,0.92);
+          color: #0a0a0c;
+        }
+        .product-page.dark .filter-clear {
+          color: #0071e3;
+        }
+        .product-page.dark .filter-meta {
+          color: rgba(255,255,255,0.6);
+        }
+        .product-page.dark .settings-popover {
+          background: #1c1c1f;
+          border-color: rgba(255,255,255,0.12);
+          box-shadow: 0 18px 40px rgba(0,0,0,0.5);
+        }
+        .product-page.dark .settings-popover label {
+          color: rgba(255,255,255,0.6);
+        }
+        .product-page.dark .settings-popover input {
+          border-color: rgba(255,255,255,0.12);
+          background: #0a0a0c;
+          color: rgba(255,255,255,0.92);
+        }
+        .product-page.dark .filter-bar {
+          background: rgba(10,10,12,0.88);
+          border-top-color: rgba(255,255,255,0.12);
+          border-bottom-color: rgba(255,255,255,0.12);
+        }
+        .product-page.dark .product-hero {
+          background: #0a0a0c;
+        }
+        .product-page.dark .hero-copy {
+          color: rgba(255,255,255,0.6);
+        }
+        .product-page.dark .hero-cta button {
+          background: #1c1c1f;
+          color: rgba(255,255,255,0.92);
+        }
+        .product-page.dark .hero-stats {
+          border-color: rgba(255,255,255,0.12);
+          background: rgba(255,255,255,0.12);
+        }
+        .product-page.dark .stat-block {
+          background: #1c1c1f;
+        }
+        .product-page.dark .stat-block span {
+          color: rgba(255,255,255,0.6);
+        }
+        .product-page.dark .feature-section {
+          background: #1c1c1f;
+          border-top-color: rgba(255,255,255,0.12);
+        }
+        .product-page.dark .feature-section.alt {
+          background: #111113;
+        }
+        .product-page.dark .eyebrow-row i {
+          background: rgba(255,255,255,0.24);
+        }
+        .product-page.dark .section-summary {
+          color: rgba(255,255,255,0.6);
+        }
+        .product-page.dark .stack-pill {
+          color: rgba(255,255,255,0.6);
+          background: #0a0a0c;
+        }
+        .product-page.dark .feature-copy h3,
+        .product-page.dark .code-panel h3 {
+          color: rgba(255,255,255,0.6);
+        }
+        .product-page.dark .feature-copy p {
+          color: rgba(255,255,255,0.92);
+        }
+        .product-page.dark .feature-copy li {
+          border-top-color: rgba(255,255,255,0.12);
+        }
+        .product-page.dark .feature-copy li:last-child {
+          border-bottom-color: rgba(255,255,255,0.12);
+        }
+        .product-page.dark .feature-copy li p {
+          color: rgba(255,255,255,0.6);
+        }
+        .product-page.dark .code-panel pre {
+          background: #0a0a0c;
+          color: rgba(255,255,255,0.92);
+        }
+        .product-page.dark .bento-section {
+          background: #161618;
+          border-top-color: rgba(255,255,255,0.12);
+        }
+        .product-page.dark .bento-card {
+          background: #1c1c1f;
+        }
+        .product-page.dark .trend-row {
+          border-top-color: rgba(255,255,255,0.12);
+        }
+        .product-page.dark .trend-row span:first-child {
+          color: rgba(255,255,255,0.6);
+        }
+        .product-page.dark .mix-row i {
+          background: rgba(255,255,255,0.12);
+        }
+        .product-page.dark .empty-state {
+          background: #1c1c1f;
+          color: rgba(255,255,255,0.6);
+        }
+        .product-page.dark .to-top {
+          background: rgba(28,28,31,0.9);
+          border-color: rgba(255,255,255,0.12);
+          color: rgba(255,255,255,0.92);
+        }
+        .product-page.dark .overview-section {
+          background: #111113;
+          border-top-color: rgba(255,255,255,0.12);
+        }
+        .product-page.dark .overview-card {
+          background: #1c1c1f;
+          border-color: rgba(255,255,255,0.12);
+        }
+        .product-page.dark .overview-card:hover {
+          border-color: rgba(255,255,255,0.22);
+          box-shadow: 0 12px 28px rgba(0,0,0,0.5);
+        }
+        .product-page.dark .overview-tagline {
+          color: rgba(255,255,255,0.6);
+        }
+        .product-page.dark .overview-no, .product-page.dark .overview-stars {
+          color: rgba(255,255,255,0.5);
         }
       `}</style>
 
@@ -976,6 +1102,9 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
               </select>
             )}
             <a href="#picks">今日精選</a>
+            <button type="button" onClick={toggleTheme} aria-label={dark ? "切換淺色模式" : "切換深色模式"} title={dark ? "淺色模式" : "深色模式"}>
+              {dark ? "☀︎" : "☾"}
+            </button>
             <button type="button" onClick={onRefresh} disabled={status === "loading"}>重新整理</button>
             <div className="settings-wrap">
               <button type="button" onClick={() => setSettingsOpen((value) => !value)}>設定</button>
@@ -1078,6 +1207,42 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
               </div>
             </div>
           </div>
+        )}
+
+        {filtered.length > 0 && (
+          <section className="overview-section">
+            <div className="overview-inner">
+              <h2 className="overview-title">今日精選一覽</h2>
+              <div className="overview-grid">
+                {filtered.map((pick, i) => (
+                  <button
+                    type="button"
+                    className="overview-card"
+                    key={pick.id}
+                    onClick={() => {
+                      const el = document.getElementById(`pick-${i + 1}`);
+                      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
+                  >
+                    <div className="overview-card-top">
+                      <span className="overview-no">{String(i + 1).padStart(2, "0")}</span>
+                      <span className="overview-type">{TYPE_LABELS[pick.type] || pick.type}</span>
+                    </div>
+                    <h3 className="overview-name">{pick.name}</h3>
+                    <p className="overview-tagline">{pick.tagline || pick.summary}</p>
+                    <div className="overview-card-foot">
+                      <span className="overview-models">
+                        {(pick.models || []).map((m) => (
+                          <span key={m} className="overview-dot" style={{ background: (COLORS[m] || COLORS.Claude).fg }} title={m} />
+                        ))}
+                      </span>
+                      <span className="overview-stars">{(pick.stars || 0).toLocaleString()} ★</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
         )}
 
         {!data && <div className="empty-state">正在載入 GitHub 精選...</div>}
