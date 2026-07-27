@@ -241,6 +241,21 @@ async function loadEditions() {
   return [];
 }
 
+// Cross-edition search. Unlike loadDigestData this always hits the database —
+// there is no GitHub fallback, because the index only exists server-side.
+async function searchDigestRepos({ q = "", model = null, type = null, limit = 30, offset = 0 } = {}) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (model) params.set("model", model);
+  if (type) params.set("type", type);
+  params.set("limit", String(limit));
+  if (offset) params.set("offset", String(offset));
+
+  const res = await fetchWithTimeout(`/api/repos/search?${params}`, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`搜尋失敗（HTTP ${res.status}）`);
+  return res.json();
+}
+
 async function loadDigestData(token = null, date = null) {
   if (!date) {
     try {
@@ -340,6 +355,7 @@ async function loadDigestData(token = null, date = null) {
 
 window.loadDigestData = loadDigestData;
 window.loadEditions = loadEditions;
+window.searchDigestRepos = searchDigestRepos;
 window.clearDigestCache = () => {
   localStorage.removeItem(CACHE_KEY);
   localStorage.removeItem(STARS_KEY);

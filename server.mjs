@@ -81,9 +81,99 @@ async function handleEditions(req, res) {
             payload->>'dateLabel' as date_label
      from digest_editions
      order by digest_date desc
-     limit 90`,
+     limit 365`,
   );
   sendJson(res, 200, rows.map((r) => ({ ...r, edition: editionFromDate(r.digest_date) })));
+}
+
+const SEARCH_LIMIT_MAX = 100;
+
+// ILIKE reads % and _ as wildcards, so a query containing them would silently
+// match far more than the user typed. Escape them before wrapping in %...%.
+function likePattern(value) {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return null;
+  return `%${trimmed.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+}
+
+function clampInt(value, fallback, min, max) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(parsed, min), max);
+}
+
+// Cross-edition repo search. Rows are grouped per repo, so a project featured
+// in several editions comes back once with its full appearance range.
+async function handleRepoSearch(req, res) {
+  if (!pool) {
+    sendJson(res, 503, { error: "DATABASE_URL is not configured" });
+    return;
+  }
+
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const q = likePattern(url.searchParams.get("q"));
+  const model = (url.searchParams.get("model") || "").trim() || null;
+  const type = (url.searchParams.get("type") || "").trim() || null;
+  const limit = clampInt(url.searchParams.get("limit"), 30, 1, SEARCH_LIMIT_MAX);
+  const offset = clampInt(url.searchParams.get("offset"), 0, 0, 10000);
+
+  const { rows } = await pool.query(
+    `select r.id::text as id, r.full_name, r.name, r.owner, r.html_url,
+            r.description, r.language, r.topics,
+            s.summary_zh, s.difficulty,
+            min(d.digest_date)::text as first_seen,
+            max(d.digest_date)::text as last_seen,
+            count(*)::int as appearances,
+            count(*) over ()::int as total,
+            (select array_agg(distinct m)
+               from digest_items di, unnest(di.models) m
+              where di.repo_id = r.id) as models,
+            (select array_agg(distinct di.item_type)
+               from digest_items di
+              where di.repo_id = r.id) as types,
+            (select rs.stars from repo_snapshots rs
+              where rs.repo_id = r.id
+              order by rs.snapshot_date desc
+              limit 1) as stars
+       from digest_items d
+       join repos r on r.id = d.repo_id
+       left join repo_summaries s on s.repo_id = d.repo_id
+      where ($1::text is null or r.full_name ilike $1 or r.description ilike $1
+             or s.summary_zh ilike $1 or s.why_zh ilike $1)
+        and ($2::text is null or $2 = any(d.models))
+        and ($3::text is null or d.item_type = $3)
+      group by r.id, r.full_name, r.name, r.owner, r.html_url,
+               r.description, r.language, r.topics,
+               s.summary_zh, s.difficulty
+      order by max(d.digest_date) desc, max(d.score) desc
+      limit $4 offset $5`,
+    [q, model, type, limit, offset],
+  );
+
+  sendJson(res, 200, {
+    total: rows.length ? rows[0].total : 0,
+    limit,
+    offset,
+    results: rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      author: row.owner,
+      fullName: row.full_name,
+      githubUrl: row.html_url,
+      description: row.description,
+      language: row.language,
+      topics: row.topics || [],
+      summary: row.summary_zh || row.description || "",
+      difficulty: row.difficulty,
+      models: row.models || [],
+      types: row.types || [],
+      stars: row.stars || 0,
+      appearances: row.appearances,
+      firstSeen: row.first_seen,
+      lastSeen: row.last_seen,
+      lastEdition: editionFromDate(row.last_seen),
+    })),
+  });
 }
 
 async function handleDigest(req, res) {
@@ -347,6 +437,10 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && req.url === "/internal/screenshot") {
       await handleInternalScreenshot(req, res);
+      return;
+    }
+    if (req.url?.startsWith("/api/repos/search")) {
+      await handleRepoSearch(req, res);
       return;
     }
     if (req.url === "/api/digest/editions") {
