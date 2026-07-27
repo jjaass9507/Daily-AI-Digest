@@ -15,6 +15,12 @@ const TYPE_LABELS = {
   Demo: "Demo",
 };
 
+// Cross-edition search filters against the full known vocabulary, not just
+// whatever happens to appear in the currently loaded edition.
+const ALL_MODELS = Object.keys(COLORS);
+const ALL_TYPES = Object.keys(TYPE_LABELS);
+const SEARCH_PAGE_SIZE = 30;
+
 const HERO_GRADIENTS = {
   Claude: "radial-gradient(120% 100% at 18% 12%, #ffb088 0%, #ff5b30 34%, #c93f00 68%, #4a1500 100%)",
   Gemini: "radial-gradient(120% 100% at 18% 12%, #8fbeff 0%, #2a6fdb 40%, #1d3fa6 74%, #061336 100%)",
@@ -42,6 +48,35 @@ function StatBlock({ value, label, inverse = false }) {
     <div className={inverse ? "stat-block inverse" : "stat-block"}>
       <strong>{value}</strong>
       <span>{label}</span>
+    </div>
+  );
+}
+
+function SearchResultRow({ result, onOpenEdition }) {
+  return (
+    <div className="result-row">
+      <div className="result-head">
+        <h3 className="result-name">{result.name}</h3>
+        <span className="result-owner">{result.author}</span>
+        <span className="result-stars">{(result.stars || 0).toLocaleString()} ★</span>
+      </div>
+      <p className="result-summary">{result.summary}</p>
+      <div className="result-foot">
+        <span className="result-models">
+          {(result.models || []).map((model) => (
+            <span key={model} className="overview-dot" style={{ background: (COLORS[model] || COLORS.Claude).fg }} title={model} />
+          ))}
+        </span>
+        {(result.types || []).map((type) => (
+          <span key={type} className="result-tag">{TYPE_LABELS[type] || type}</span>
+        ))}
+        {result.language && <span className="result-tag">{result.language}</span>}
+        <button type="button" className="result-edition" onClick={() => onOpenEdition(result.lastSeen)}>
+          {result.lastEdition} · {result.lastSeen}
+        </button>
+        {result.appearances > 1 && <span>登場 {result.appearances} 次</span>}
+        <a className="result-link" href={result.githubUrl} target="_blank" rel="noreferrer">GitHub</a>
+      </div>
     </div>
   );
 }
@@ -121,6 +156,8 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
   const [query, setQuery] = useState("");
   const [activeModel, setActiveModel] = useState(null);
   const [activeType, setActiveType] = useState(null);
+  const [scope, setScope] = useState("edition");
+  const [search, setSearch] = useState({ loading: false, error: null, results: [], total: 0 });
   const [showTop, setShowTop] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tokenDraft, setTokenDraft] = useState(token || "");
@@ -157,6 +194,55 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
 
   const hasActiveFilter = Boolean(activeModel || activeType || query.trim());
   const clearFilters = () => { setActiveModel(null); setActiveType(null); setQuery(""); };
+
+  const modelOptions = scope === "all" ? ALL_MODELS : availableModels;
+  const typeOptions = scope === "all" ? ALL_TYPES : availableTypes;
+
+  // Cross-edition search runs server-side, so it is debounced and refetched
+  // whenever the filters change. The "本期" scope keeps filtering in memory.
+  useEffect(() => {
+    if (scope !== "all") return undefined;
+    if (typeof window.searchDigestRepos !== "function") {
+      setSearch({ loading: false, error: "搜尋功能尚未載入，請重新整理。", results: [], total: 0 });
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      setSearch((prev) => ({ ...prev, loading: true, error: null }));
+      window.searchDigestRepos({ q: query.trim(), model: activeModel, type: activeType, limit: SEARCH_PAGE_SIZE })
+        .then((data) => {
+          if (!cancelled) setSearch({ loading: false, error: null, results: data.results || [], total: data.total || 0 });
+        })
+        .catch((err) => {
+          if (!cancelled) setSearch({ loading: false, error: err.message, results: [], total: 0 });
+        });
+    }, 300);
+
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [scope, query, activeModel, activeType]);
+
+  const loadMoreResults = () => {
+    if (search.loading) return;
+    setSearch((prev) => ({ ...prev, loading: true, error: null }));
+    window.searchDigestRepos({
+      q: query.trim(), model: activeModel, type: activeType,
+      limit: SEARCH_PAGE_SIZE, offset: search.results.length,
+    })
+      .then((data) => setSearch((prev) => ({
+        loading: false,
+        error: null,
+        results: [...prev.results, ...(data.results || [])],
+        total: data.total || prev.total,
+      })))
+      .catch((err) => setSearch((prev) => ({ ...prev, loading: false, error: err.message })));
+  };
+
+  const openEdition = (date) => {
+    setScope("edition");
+    onSelectDate(date);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const toggleTheme = () => setDark((v) => {
     const next = !v;
@@ -761,6 +847,115 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
           font-weight: 700;
           padding: 0;
         }
+        .scope-toggle {
+          display: inline-flex;
+          padding: 3px;
+          border-radius: 999px;
+          background: rgba(0,0,0,0.06);
+        }
+        .scope-btn {
+          border: none;
+          background: none;
+          color: #6e6e73;
+          font-size: 13px;
+          font-weight: 600;
+          padding: 5px 14px;
+          border-radius: 999px;
+        }
+        .scope-btn.active {
+          background: #ffffff;
+          color: #1d1d1f;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.14);
+        }
+        .search-section {
+          padding: 40px 24px;
+          background: #ffffff;
+          border-top: 1px solid rgba(0,0,0,0.08);
+        }
+        .search-inner {
+          max-width: 1080px;
+          margin: 0 auto;
+        }
+        .search-title {
+          margin: 0 0 20px;
+          font-size: 22px;
+          font-weight: 800;
+        }
+        .search-list {
+          display: grid;
+          gap: 12px;
+        }
+        .result-row {
+          display: grid;
+          gap: 8px;
+          padding: 16px 18px;
+          border: 1px solid rgba(0,0,0,0.1);
+          border-radius: 14px;
+          background: #ffffff;
+        }
+        .result-head {
+          display: flex;
+          align-items: baseline;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .result-name {
+          margin: 0;
+          font-size: 16px;
+          font-weight: 700;
+        }
+        .result-owner {
+          color: #6e6e73;
+          font-size: 13px;
+        }
+        .result-stars {
+          margin-left: auto;
+          color: #6e6e73;
+          font-size: 13px;
+          font-weight: 600;
+          white-space: nowrap;
+        }
+        .result-summary {
+          margin: 0;
+          color: #424245;
+          font-size: 14px;
+          line-height: 1.55;
+        }
+        .result-foot {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+          color: #6e6e73;
+          font-size: 12px;
+        }
+        .result-models {
+          display: inline-flex;
+          gap: 4px;
+        }
+        .result-tag {
+          border: 1px solid rgba(0,0,0,0.1);
+          border-radius: 999px;
+          padding: 2px 9px;
+          font-weight: 600;
+        }
+        .result-edition,
+        .result-link {
+          border: none;
+          background: none;
+          color: #0071e3;
+          cursor: pointer;
+          font: inherit;
+          font-size: 12px;
+          font-weight: 700;
+          padding: 0;
+          text-decoration: none;
+        }
+        .search-more {
+          display: flex;
+          justify-content: center;
+          padding-top: 20px;
+        }
         .to-top {
           position: fixed;
           right: 24px;
@@ -1074,6 +1269,35 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
         .product-page.dark .overview-no, .product-page.dark .overview-stars {
           color: rgba(255,255,255,0.5);
         }
+        .product-page.dark .scope-toggle {
+          background: rgba(255,255,255,0.08);
+        }
+        .product-page.dark .scope-btn {
+          color: rgba(255,255,255,0.6);
+        }
+        .product-page.dark .scope-btn.active {
+          background: #2c2c2e;
+          color: #ffffff;
+        }
+        .product-page.dark .search-section {
+          background: #0a0a0c;
+          border-top-color: rgba(255,255,255,0.12);
+        }
+        .product-page.dark .result-row {
+          background: #1c1c1f;
+          border-color: rgba(255,255,255,0.12);
+        }
+        .product-page.dark .result-summary {
+          color: rgba(255,255,255,0.72);
+        }
+        .product-page.dark .result-owner,
+        .product-page.dark .result-stars,
+        .product-page.dark .result-foot {
+          color: rgba(255,255,255,0.5);
+        }
+        .product-page.dark .result-tag {
+          border-color: rgba(255,255,255,0.16);
+        }
       `}</style>
 
       <header className="product-nav">
@@ -1083,7 +1307,7 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
             className="search-box"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜尋 repo、模型或技術棧"
+            placeholder={scope === "all" ? "搜尋所有歷史期數的 repo 或摘要" : "搜尋 repo、模型或技術棧"}
           />
           <div className="nav-actions">
             {editions && editions.length > 0 && (
@@ -1156,13 +1380,29 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
           </div>
         </section>
 
-        {picks.length > 0 && (
+        {(data || scope === "all") && (
           <div className="filter-bar">
             <div className="filter-inner">
+              <div className="scope-toggle" role="group" aria-label="查詢範圍">
+                <button
+                  type="button"
+                  className={scope === "edition" ? "scope-btn active" : "scope-btn"}
+                  onClick={() => setScope("edition")}
+                >
+                  本期
+                </button>
+                <button
+                  type="button"
+                  className={scope === "all" ? "scope-btn active" : "scope-btn"}
+                  onClick={() => setScope("all")}
+                >
+                  全部歷史
+                </button>
+              </div>
               <div className="filter-groups">
-                {availableModels.length > 0 && (
+                {modelOptions.length > 0 && (
                   <div className="filter-group">
-                    {availableModels.map((model) => {
+                    {modelOptions.map((model) => {
                       const color = COLORS[model] || COLORS.Claude;
                       const active = activeModel === model;
                       return (
@@ -1180,9 +1420,9 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
                     })}
                   </div>
                 )}
-                {availableTypes.length > 0 && (
+                {typeOptions.length > 0 && (
                   <div className="filter-group">
-                    {availableTypes.map((type) => {
+                    {typeOptions.map((type) => {
                       const active = activeType === type;
                       return (
                         <button
@@ -1200,7 +1440,11 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
                 )}
               </div>
               <div className="filter-meta">
-                <span>{filtered.length} / {picks.length} 個精選</span>
+                <span>
+                  {scope === "all"
+                    ? `${search.results.length} / ${search.total} 個專案`
+                    : `${filtered.length} / ${picks.length} 個精選`}
+                </span>
                 {hasActiveFilter && (
                   <button type="button" className="filter-clear" onClick={clearFilters}>清除篩選</button>
                 )}
@@ -1209,7 +1453,35 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
           </div>
         )}
 
-        {filtered.length > 0 && (
+        {scope === "all" && (
+          <section className="search-section">
+            <div className="search-inner">
+              <h2 className="search-title">歷史精選查詢</h2>
+              {search.error && <div className="empty-state">{search.error}</div>}
+              {!search.error && search.results.length === 0 && (
+                <div className="empty-state">
+                  {search.loading ? "查詢中..." : "沒有符合條件的專案。"}
+                </div>
+              )}
+              {search.results.length > 0 && (
+                <div className="search-list">
+                  {search.results.map((result) => (
+                    <SearchResultRow key={result.id} result={result} onOpenEdition={openEdition} />
+                  ))}
+                </div>
+              )}
+              {search.results.length < search.total && (
+                <div className="search-more">
+                  <button type="button" onClick={loadMoreResults} disabled={search.loading}>
+                    {search.loading ? "載入中..." : `載入更多（還有 ${search.total - search.results.length} 個）`}
+                  </button>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {scope === "edition" && filtered.length > 0 && (
           <section className="overview-section">
             <div className="overview-inner">
               <h2 className="overview-title">今日精選一覽</h2>
@@ -1245,15 +1517,15 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
           </section>
         )}
 
-        {!data && <div className="empty-state">正在載入 GitHub 精選...</div>}
-        {data && filtered.length === 0 && (
+        {scope === "edition" && !data && <div className="empty-state">正在載入 GitHub 精選...</div>}
+        {scope === "edition" && data && filtered.length === 0 && (
           <div className="empty-state">
             目前篩選條件下沒有符合的 repo。
             {hasActiveFilter && <> <button type="button" className="filter-clear" onClick={clearFilters}>清除篩選</button></>}
           </div>
         )}
 
-        {filtered.length > 0 && (
+        {scope === "edition" && filtered.length > 0 && (
           <div id="picks">
             {filtered.map((pick, index) => (
               <FeatureSection key={pick.id} pick={pick} index={index} total={filtered.length} />
@@ -1261,7 +1533,7 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
           </div>
         )}
 
-        {data && (
+        {scope === "edition" && data && (
           <section className="bento-section">
             <div className="bento-inner">
               <h2>把趨勢訊號整理成可行動的清單。</h2>
