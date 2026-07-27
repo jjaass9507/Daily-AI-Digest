@@ -42,6 +42,27 @@ function editionFromDate(dateStr) {
   return `第 ${Math.max(1, Math.floor((d - EDITION_START) / 86400e3) + 1)} 期`;
 }
 
+// The daily payload is agent-generated, so list fields can arrive as a plain
+// string. Coerce them here so every consumer (web app, email) sees arrays.
+function toList(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string" && value.trim()) return value.split(/\s*[/,、]\s*/).filter(Boolean);
+  return [];
+}
+
+function normalizePicks(payload) {
+  if (!Array.isArray(payload.picks)) return payload;
+  return {
+    ...payload,
+    picks: payload.picks.map((pick) => ({
+      ...pick,
+      models: toList(pick.models),
+      stack: toList(pick.stack),
+      steps: toList(pick.steps),
+    })),
+  };
+}
+
 function sendJson(res, status, body) {
   res.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
@@ -85,7 +106,7 @@ async function handleDigest(req, res) {
     sendJson(res, 404, { error: "digest_not_found" });
     return;
   }
-  const payload = { ...rows[0].payload, edition: editionFromDate(rows[0].digest_date) };
+  const payload = normalizePicks({ ...rows[0].payload, edition: editionFromDate(rows[0].digest_date) });
   sendJson(res, 200, payload);
 }
 

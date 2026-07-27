@@ -105,6 +105,10 @@ https://raw.githubusercontent.com/{full_name}/{branch}/README.md
 - `stack`：主要語言 + 從 topics 偵測 react/nextjs/langchain/fastapi/docker 等
 - `topics`、`license`、`updatedAt`
 
+`models`、`stack`、`steps`、`topics` 一定要是 **陣列**（即使只有一個元素也要寫成
+`["JavaScript"]`，不能寫成 `"JavaScript"`），否則前端會在 render 時丟出
+`.map is not a function` 而整頁變空白。
+
 組合 digest 頂層：
 ```json
 {

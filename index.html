@@ -83,8 +83,11 @@ const { useCallback, useEffect, useState } = React;
 
 const TOKEN_KEY = "digest-gh-token";
 
+let hideTimer = null;
+
 function showOverlay(html) {
   const el = document.getElementById("digest-overlay");
+  clearTimeout(hideTimer);
   el.innerHTML = html;
   el.style.display = "flex";
   el.classList.remove("hidden");
@@ -93,7 +96,36 @@ function showOverlay(html) {
 function hideOverlay() {
   const el = document.getElementById("digest-overlay");
   el.classList.add("hidden");
-  setTimeout(() => { el.style.display = "none"; }, 450);
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(() => { el.style.display = "none"; }, 450);
+}
+
+// Without this, any render-time exception unmounts the whole tree and leaves a
+// blank (in dark mode, all-black) page with no clue about what went wrong.
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { failed: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error) {
+    const message = String(error?.message || error).replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c]);
+    showOverlay(`
+      <div class="overlay-error">
+        <h2>頁面渲染失敗</h2>
+        <p>${message}</p>
+        <button class="overlay-btn primary" onclick="location.reload()">重新整理</button>
+      </div>
+    `);
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
 }
 
 function App() {
@@ -176,20 +208,22 @@ function App() {
   };
 
   return (
-    <DigestApp
-      data={digest}
-      status={status}
-      token={token}
-      onTokenChange={saveToken}
-      onRefresh={() => load(localStorage.getItem(TOKEN_KEY) || "", selectedDate)}
-      onClearCache={() => {
-        window.clearDigestCache();
-        load(localStorage.getItem(TOKEN_KEY) || "", null);
-      }}
-      editions={editions}
-      selectedDate={selectedDate}
-      onSelectDate={handleSelectDate}
-    />
+    <ErrorBoundary>
+      <DigestApp
+        data={digest}
+        status={status}
+        token={token}
+        onTokenChange={saveToken}
+        onRefresh={() => load(localStorage.getItem(TOKEN_KEY) || "", selectedDate)}
+        onClearCache={() => {
+          window.clearDigestCache();
+          load(localStorage.getItem(TOKEN_KEY) || "", null);
+        }}
+        editions={editions}
+        selectedDate={selectedDate}
+        onSelectDate={handleSelectDate}
+      />
+    </ErrorBoundary>
   );
 }
 

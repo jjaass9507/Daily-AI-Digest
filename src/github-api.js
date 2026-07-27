@@ -202,6 +202,27 @@ function fallbackData() {
   };
 }
 
+// The daily payload is agent-generated, so list fields can arrive as a plain
+// string. Coerce them before render, otherwise one bad field blanks the page.
+function toList(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string" && value.trim()) return value.split(/\s*[/,、]\s*/).filter(Boolean);
+  return [];
+}
+
+function normalizeDigest(data) {
+  if (!data || !Array.isArray(data.picks)) return data;
+  return {
+    ...data,
+    picks: data.picks.map((pick) => ({
+      ...pick,
+      models: toList(pick.models),
+      stack: toList(pick.stack),
+      steps: toList(pick.steps),
+    })),
+  };
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -225,7 +246,7 @@ async function loadDigestData(token = null, date = null) {
     try {
       const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
       if (cached && Date.now() - cached.ts < CACHE_TTL) {
-        return { data: cached.data, source: "cache" };
+        return { data: normalizeDigest(cached.data), source: "cache" };
       }
     } catch {}
   }
@@ -234,7 +255,7 @@ async function loadDigestData(token = null, date = null) {
     const url = date ? `/api/digest/${date}` : "/api/digest/today";
     const res = await fetchWithTimeout(url, { headers: { Accept: "application/json" } });
     if (res.ok) {
-      const data = await res.json();
+      const data = normalizeDigest(await res.json());
       if (!date) {
         try { localStorage.setItem(CACHE_KEY, JSON.stringify({ data, ts: Date.now() })); } catch {}
       }
