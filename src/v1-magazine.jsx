@@ -295,8 +295,15 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
           font-size: 18px;
           white-space: nowrap;
         }
+        .nav-search {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+        }
         .search-box {
           width: 100%;
+          min-width: 0;
           border: 1px solid rgba(0,0,0,0.1);
           border-radius: 999px;
           padding: 9px 16px;
@@ -849,9 +856,31 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
         }
         .scope-toggle {
           display: inline-flex;
+          flex: none;
           padding: 3px;
           border-radius: 999px;
           background: rgba(0,0,0,0.06);
+        }
+        .scope-hint {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          flex-wrap: wrap;
+          margin: 0 auto 28px;
+          max-width: 1080px;
+          padding: 12px 18px;
+          border: 1px solid rgba(0,113,227,0.25);
+          border-radius: 12px;
+          background: rgba(0,113,227,0.06);
+          color: #424245;
+          font-size: 14px;
+        }
+        .scope-hint button {
+          border-color: #0071e3;
+          background: #0071e3;
+          color: #ffffff;
+          font-weight: 600;
         }
         .scope-btn {
           border: none;
@@ -1078,6 +1107,12 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
             grid-template-columns: 1fr;
             gap: 10px;
           }
+          .nav-search {
+            flex-wrap: wrap;
+          }
+          .nav-search .search-box {
+            flex: 1 1 100%;
+          }
           .nav-actions {
             justify-content: flex-start;
             flex-wrap: wrap;
@@ -1272,6 +1307,11 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
         .product-page.dark .scope-toggle {
           background: rgba(255,255,255,0.08);
         }
+        .product-page.dark .scope-hint {
+          background: rgba(0,113,227,0.12);
+          border-color: rgba(0,113,227,0.35);
+          color: rgba(255,255,255,0.78);
+        }
         .product-page.dark .scope-btn {
           color: rgba(255,255,255,0.6);
         }
@@ -1303,12 +1343,34 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
       <header className="product-nav">
         <div className="nav-inner">
           <div className="brand">Daily AI Digest</div>
-          <input
-            className="search-box"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={scope === "all" ? "搜尋所有歷史期數的 repo 或摘要" : "搜尋 repo、模型或技術棧"}
-          />
+          {/* The scope switch lives next to the search box on purpose: it changes
+              what the box searches, and further away it simply is not found. */}
+          <div className="nav-search">
+            <input
+              className="search-box"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={scope === "all" ? "搜尋所有歷史期數的 repo 或摘要" : "搜尋本期 repo、模型或技術棧"}
+            />
+            <div className="scope-toggle" role="group" aria-label="查詢範圍">
+              <button
+                type="button"
+                className={scope === "edition" ? "scope-btn active" : "scope-btn"}
+                aria-pressed={scope === "edition"}
+                onClick={() => setScope("edition")}
+              >
+                本期
+              </button>
+              <button
+                type="button"
+                className={scope === "all" ? "scope-btn active" : "scope-btn"}
+                aria-pressed={scope === "all"}
+                onClick={() => setScope("all")}
+              >
+                全部歷史
+              </button>
+            </div>
+          </div>
           <div className="nav-actions">
             {editions && editions.length > 0 && (
               <select
@@ -1355,6 +1417,9 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
       </header>
 
       <main>
+        {/* The hero describes today's edition, so it is dead weight in the
+            all-history scope — and 800px of it would push results off-screen. */}
+        {scope === "edition" && (
         <section className="product-hero">
           <div className="hero-bg" />
           <div className="hero-inner">
@@ -1379,26 +1444,11 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
             </div>
           </div>
         </section>
+        )}
 
         {(data || scope === "all") && (
           <div className="filter-bar">
             <div className="filter-inner">
-              <div className="scope-toggle" role="group" aria-label="查詢範圍">
-                <button
-                  type="button"
-                  className={scope === "edition" ? "scope-btn active" : "scope-btn"}
-                  onClick={() => setScope("edition")}
-                >
-                  本期
-                </button>
-                <button
-                  type="button"
-                  className={scope === "all" ? "scope-btn active" : "scope-btn"}
-                  onClick={() => setScope("all")}
-                >
-                  全部歷史
-                </button>
-              </div>
               <div className="filter-groups">
                 {modelOptions.length > 0 && (
                   <div className="filter-group">
@@ -1450,6 +1500,13 @@ function DigestApp({ data, status, onRefresh, token, onTokenChange, onClearCache
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {scope === "edition" && query.trim() && (
+          <div className="scope-hint">
+            <span>目前只搜尋本期的 {picks.length} 個精選，找到 {filtered.length} 個。</span>
+            <button type="button" onClick={() => setScope("all")}>改搜尋全部歷史期數</button>
           </div>
         )}
 
