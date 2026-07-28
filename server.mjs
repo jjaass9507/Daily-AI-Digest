@@ -199,15 +199,31 @@ const LOCK_FILE_NAMES = new Set([
 const BINARY_EXT_RE = /\.(png|jpe?g|gif|ico|svg|webp|pdf|zip|gz|tar|whl|so|dll|dylib|woff2?|ttf|eot|mp4|mp3|wasm|bin|exe|jar|class)$/i;
 
 const ENTRY_PATTERNS = {
-  TypeScript: [/^src\/index\.tsx?$/, /^src\/main\.tsx?$/, /^index\.tsx?$/],
-  JavaScript: [/^src\/index\.jsx?$/, /^src\/main\.jsx?$/, /^index\.jsx?$/],
-  Python: [/^src\/main\.py$/, /^main\.py$/, /^app\.py$/, /^src\/app\.py$/],
-  Go: [/^main\.go$/, /^cmd\/[^/]+\/main\.go$/],
+  // Real-world packages are frequently not `src/main.<ext>` — e.g. a Python
+  // package's entry point is its `src/<pkg>/__init__.py`, and Go binaries
+  // often live under `cmd/<name>/main.go` or a top-level `pkg/`.
+  TypeScript: [/^src\/index\.tsx?$/, /^src\/main\.tsx?$/, /^index\.tsx?$/, /^lib\/index\.tsx?$/],
+  JavaScript: [/^src\/index\.jsx?$/, /^src\/main\.jsx?$/, /^index\.jsx?$/, /^lib\/index\.jsx?$/],
+  Python: [/^src\/[^/]+\/__init__\.py$/, /^src\/main\.py$/, /^main\.py$/, /^app\.py$/, /^src\/app\.py$/],
+  Go: [/^main\.go$/, /^cmd\/[^/]+\/main\.go$/, /^pkg\/[^/]+\/[^/]+\.go$/],
   Rust: [/^src\/lib\.rs$/, /^src\/main\.rs$/],
 };
 const GENERIC_ENTRY_CANDIDATES = [
   "src/index.ts", "src/index.js", "src/main.py", "main.go", "src/lib.rs", "app.py", "main.py", "index.js", "index.ts",
 ];
+// Extensions checked by the last-resort fallback below, keyed by GitHub's
+// reported primary language.
+const LANGUAGE_EXTENSIONS = {
+  TypeScript: [".ts", ".tsx"],
+  JavaScript: [".js", ".jsx", ".mjs", ".cjs"],
+  Python: [".py"],
+  Go: [".go"],
+  Rust: [".rs"],
+};
+// Fallback-only exclusions (on top of filterTreePaths' generic ones): paths
+// that are clearly not core library code — tests, examples, docs, CI tooling.
+const FALLBACK_EXCLUDE_RE = /(^|\/)(test|tests|__tests__|spec|specs|example|examples|doc|docs|benchmark|benchmarks|fixtures?|\.github)(\/|$)/i;
+const FALLBACK_EXCLUDE_BASENAME_RE = /^\.|\.test\.|\.spec\.|config|ignore|\.d\.ts$|\.rc\./i;
 
 function ghHeaders() {
   const headers = { Accept: "application/vnd.github.v3+json", "User-Agent": "daily-ai-digest-context" };
@@ -259,12 +275,37 @@ function filterTreePaths(tree) {
 function guessEntryPoints(language, treePaths) {
   const matches = [];
   for (const pattern of ENTRY_PATTERNS[language] || []) {
-    const hit = treePaths.find((path) => pattern.test(path));
-    if (hit && !matches.includes(hit)) matches.push(hit);
+    const hit = treePaths.find((path) => pattern.test(path) && !matches.includes(path));
+    if (hit) matches.push(hit);
   }
+  // Generic candidates must actually exist in the fetched tree — requesting
+  // a file GitHub doesn't have just wastes a request and returns nothing.
   for (const candidate of GENERIC_ENTRY_CANDIDATES) {
     if (matches.length >= 3) break;
-    if (!matches.includes(candidate)) matches.push(candidate);
+    if (treePaths.includes(candidate) && !matches.includes(candidate)) matches.push(candidate);
+  }
+  // Still short of 3: fall back to whatever source files the tree actually
+  // has for this language, preferring shallow paths under src/ or lib/ over
+  // root-level tooling/config scripts.
+  if (matches.length < 3) {
+    const exts = LANGUAGE_EXTENSIONS[language] || [];
+    if (exts.length) {
+      const eligible = treePaths
+        .filter((path) => exts.some((ext) => path.endsWith(ext)))
+        .filter((path) => !FALLBACK_EXCLUDE_RE.test(path))
+        .filter((path) => !FALLBACK_EXCLUDE_BASENAME_RE.test(path.split("/").pop()))
+        .filter((path) => !matches.includes(path));
+      const bySourceDir = eligible.filter((path) => /(^|\/)(src|lib)\//.test(path));
+      const pool = bySourceDir.length ? bySourceDir : eligible;
+      pool
+        .sort((a, b) => {
+          const depthDiff = a.split("/").length - b.split("/").length;
+          return depthDiff !== 0 ? depthDiff : a.localeCompare(b);
+        })
+        .forEach((path) => {
+          if (matches.length < 3) matches.push(path);
+        });
+    }
   }
   return matches.slice(0, 3);
 }
@@ -480,6 +521,70 @@ async function handleRepoContext(req, res, repoIdParam) {
   }
 
   sendJson(res, 200, trimForDepth(payload, depth));
+}
+
+// ---------------------------------------------------------------------------
+// On-demand file fetch (P3, two-stage "deep read" Q&A). Lets the browser ask
+// for the specific files an LLM decided it needs to read for one question,
+// without re-fetching the whole deep context. Paths are user/LLM-supplied,
+// so they're validated as relative paths within the repo before ever
+// reaching the GitHub API — no `..`, no absolute paths.
+// ---------------------------------------------------------------------------
+
+const MAX_REQUESTED_FILES = 5;
+const REQUESTED_FILE_TRUNCATE = 8000;
+
+function isSafeRelativePath(path) {
+  if (typeof path !== "string" || !path.trim()) return false;
+  if (path.startsWith("/")) return false;
+  return !path.split("/").some((segment) => segment === "..");
+}
+
+async function handleRepoFiles(req, res, repoIdParam) {
+  if (!pool) {
+    sendJson(res, 503, { error: "DATABASE_URL is not configured" });
+    return;
+  }
+
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const paths = (url.searchParams.get("paths") || "")
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  if (!paths.length) {
+    sendJson(res, 400, { error: "paths_required" });
+    return;
+  }
+  if (paths.length > MAX_REQUESTED_FILES) {
+    sendJson(res, 400, { error: "too_many_paths", max: MAX_REQUESTED_FILES });
+    return;
+  }
+  if (paths.some((p) => !isSafeRelativePath(p))) {
+    sendJson(res, 400, { error: "invalid_path" });
+    return;
+  }
+
+  const { rows } = await pool.query(`select full_name from repos where id = $1::bigint`, [repoIdParam]);
+  if (!rows.length) {
+    sendJson(res, 404, { error: "repo_not_found" });
+    return;
+  }
+  const fullName = rows[0].full_name;
+
+  const results = await Promise.all(
+    paths.map(async (path) => ({ path, r: await ghGet(`/repos/${fullName}/contents/${contentsUrlPath(path)}`) })),
+  );
+
+  const files = {};
+  const missing = [];
+  for (const { path, r } of results) {
+    const content = r.ok ? decodeContent(r.data) : null;
+    if (content) files[path] = content.slice(0, REQUESTED_FILE_TRUNCATE);
+    else missing.push(path);
+  }
+
+  sendJson(res, 200, { files, missing });
 }
 
 async function handleDigest(req, res) {
@@ -752,6 +857,11 @@ const server = createServer(async (req, res) => {
     const contextMatch = req.url?.match(/^\/api\/repos\/(\d+)\/context(?:\?.*)?$/);
     if (contextMatch) {
       await handleRepoContext(req, res, contextMatch[1]);
+      return;
+    }
+    const filesMatch = req.url?.match(/^\/api\/repos\/(\d+)\/files(?:\?.*)?$/);
+    if (filesMatch) {
+      await handleRepoFiles(req, res, filesMatch[1]);
       return;
     }
     if (req.url === "/api/digest/editions") {

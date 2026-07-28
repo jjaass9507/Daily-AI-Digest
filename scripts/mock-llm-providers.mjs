@@ -119,15 +119,29 @@ function anthropicSseEvents() {
   ];
 }
 
-function openaiSseEvents() {
+// `tokens` lets callers override the streamed text — used to drive the P3
+// two-stage "深度解讀" flow in manual/browser testing, where stage 1 must
+// return a JSON array of file paths and stage 2 must answer using file
+// content, rather than always saying "Hello world!".
+function openaiSseEvents(tokens = ["Hello", " world", "!"]) {
   return [
     sseEvent(null, { id: "chatcmpl-mock1", object: "chat.completion.chunk", choices: [{ index: 0, delta: { role: "assistant" } }] }),
-    sseEvent(null, { id: "chatcmpl-mock1", choices: [{ index: 0, delta: { content: "Hello" } }] }),
-    sseEvent(null, { id: "chatcmpl-mock1", choices: [{ index: 0, delta: { content: " world" } }] }),
-    sseEvent(null, { id: "chatcmpl-mock1", choices: [{ index: 0, delta: { content: "!" } }] }),
+    ...tokens.map((t) => sseEvent(null, { id: "chatcmpl-mock1", choices: [{ index: 0, delta: { content: t } }] })),
     sseEvent(null, { id: "chatcmpl-mock1", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }),
     sseEvent(null, "[DONE]"),
   ];
+}
+
+// Extracts the system prompt text from whichever request shape was sent, so
+// the openai-compat route (used to drive the P3 two-stage flow in manual
+// testing) can tell stage 1 (file selection) apart from stage 2 (the real
+// answer, now with file content attached) and respond accordingly.
+function systemTextOf(parsedBody) {
+  if (Array.isArray(parsedBody?.messages)) {
+    const sys = parsedBody.messages.find((m) => m.role === "system");
+    return sys?.content || "";
+  }
+  return "";
 }
 
 function geminiSseEvents() {
@@ -191,7 +205,23 @@ export function startMockServer({ port = 0 } = {}) {
         respondError(req, res, { error: { message: "mock custom endpoint error", type: "invalid_request_error", code: null } });
         return;
       }
-      await respondStream(req, res, openaiSseEvents(), streamOpts);
+      let parsedBody = {};
+      try { parsedBody = JSON.parse(body); } catch { /* fall through with default tokens */ }
+      const system = systemTextOf(parsedBody);
+      let tokens;
+      if (system.includes("JSON 陣列") && marker === "__trigger_badjson__") {
+        // Stage 1, but the model ignores the format instruction — used to
+        // test the client's fall-back-to-normal-mode behavior.
+        tokens = ["我覺得你應該先看看 README，另外我不太確定要選哪些檔案。"];
+      } else if (system.includes("JSON 陣列")) {
+        // Stage 1 of the P3 two-stage "深度解讀" flow: must answer with only
+        // a JSON array of file paths.
+        tokens = [JSON.stringify(["src/anthropic/__init__.py", "README.md"])];
+      } else if (system.includes("深度解讀")) {
+        // Stage 2, with file content already folded into the system prompt.
+        tokens = ["（深度解讀）已讀取 ", "src/anthropic/__init__.py", " 的實際內容後回答。"];
+      }
+      await respondStream(req, res, openaiSseEvents(tokens), streamOpts);
       return;
     }
 

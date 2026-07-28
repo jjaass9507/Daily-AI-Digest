@@ -156,6 +156,35 @@ Render server（`server.mjs`）提供的所有 API 端點。
 
 ---
 
+### `GET /api/repos/:id/files`
+
+取得指定檔案在 repo 內的實際內容，供前端「深度解讀」兩段式問答使用：先請 LLM 從檔案樹挑出需要細讀的檔案，再用這個端點把內容抓回來夾進第二段提問。本端點本身不呼叫任何 LLM，也不快取（每次都即時向 GitHub 抓取）。
+
+**URL 參數：**
+- `id`：`repos.id`（bigint）
+
+**Query 參數：**
+- `paths`：以逗號分隔的檔案路徑清單，例如 `paths=src/index.ts,package.json`。必須是 repo 內的相對路徑（不可以 `/` 開頭、不可包含 `..` 路徑片段），且最多 5 個。
+
+單一檔案抓取失敗（404、逾時、rate limit 等）不會讓整個請求失敗，該路徑會列在 `missing`，端點仍回傳 `200`。每個檔案內容截斷至 8000 字元。
+
+**Response 範例：**
+```json
+{
+  "files": { "src/index.ts": "..." },
+  "missing": ["docs/does-not-exist.md"]
+}
+```
+
+**錯誤：**
+- `400` — `{"error":"paths_required"}`（未帶 `paths`）
+- `400` — `{"error":"too_many_paths","max":5}`（超過 5 個路徑）
+- `400` — `{"error":"invalid_path"}`（路徑為絕對路徑或含 `..`）
+- `404` — `{"error":"repo_not_found"}`（repo 不在 `repos` 表）
+- `503` — 資料庫未設定
+
+---
+
 ## 內部 API
 
 需要在 `Authorization` header 帶入 Bearer token：
