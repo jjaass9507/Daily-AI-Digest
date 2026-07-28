@@ -385,6 +385,21 @@ function estimateTokens(value) {
   return Math.round(JSON.stringify(value).length / 3);
 }
 
+// True when the GitHub side yielded anything at all. Used to decide whether a
+// result is worth caching — see the cache write in handleRepoContext.
+function hasAnyGithubData(github) {
+  if (!github) return false;
+  return Boolean(
+    github.readme ||
+    github.latestRelease ||
+    (github.fileTree || []).length ||
+    (github.commits || []).length ||
+    (github.openIssues || []).length ||
+    Object.keys(github.manifests || {}).length ||
+    Object.keys(github.sourceFiles || {}).length,
+  );
+}
+
 // Depth only trims the already-cached payload on the way out, so a repo only
 // ever needs one GitHub fetch regardless of how many depths get requested.
 function trimForDepth(payload, depth) {
@@ -511,13 +526,18 @@ async function handleRepoContext(req, res, repoIdParam) {
       missing,
     };
 
-    await pool.query(
-      `insert into repo_context (repo_id, payload, token_estimate, fetched_at)
-       values ($1::bigint,$2,$3,now())
-       on conflict (repo_id) do update set
-         payload=excluded.payload, token_estimate=excluded.token_estimate, fetched_at=now()`,
-      [repoIdParam, JSON.stringify(payload), estimateTokens(payload)],
-    );
+    // A total GitHub failure (rate limit, outage, missing token) must not be
+    // cached: doing so would serve a DB-only context for the next 24h even
+    // after the cause is fixed. Partial results are still worth keeping.
+    if (hasAnyGithubData(github)) {
+      await pool.query(
+        `insert into repo_context (repo_id, payload, token_estimate, fetched_at)
+         values ($1::bigint,$2,$3,now())
+         on conflict (repo_id) do update set
+           payload=excluded.payload, token_estimate=excluded.token_estimate, fetched_at=now()`,
+        [repoIdParam, JSON.stringify(payload), estimateTokens(payload)],
+      );
+    }
   }
 
   sendJson(res, 200, trimForDepth(payload, depth));
