@@ -8,7 +8,8 @@
     "update:digest": "node scripts/update-digest.mjs",
     "db:schema": "node scripts/apply-schema.mjs",
     "setup:digest": "node scripts/apply-schema.mjs && node scripts/update-digest.mjs",
-    "agent:digest": "node scripts/agent-digest.mjs"
+    "agent:digest": "node scripts/agent-digest.mjs",
+    "test:providers": "node scripts/test-llm-providers.mjs"
   },
   "dependencies": {
     "pg": "^8.13.1"
