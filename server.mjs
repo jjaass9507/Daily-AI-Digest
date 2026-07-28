@@ -219,10 +219,39 @@ const LANGUAGE_EXTENSIONS = {
   Python: [".py"],
   Go: [".go"],
   Rust: [".rs"],
+  Java: [".java"],
+  Kotlin: [".kt", ".kts"],
+  Swift: [".swift"],
+  "C#": [".cs"],
+  "C++": [".cpp", ".cc", ".cxx", ".h", ".hpp"],
+  C: [".c", ".h"],
+  Ruby: [".rb"],
+  PHP: [".php"],
+  Scala: [".scala"],
+  Dart: [".dart"],
+  Elixir: [".ex", ".exs"],
+  Zig: [".zig"],
+  Lua: [".lua"],
+  Shell: [".sh"],
+  HTML: [".html", ".js", ".ts"],
+  "Jupyter Notebook": [".py", ".ipynb"],
 };
+// Repos with no primary language reported (or one we don't map) still deserve a
+// deep tier, so fall back to the common source extensions rather than nothing.
+const DEFAULT_SOURCE_EXTENSIONS = [
+  ".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".java", ".kt",
+  ".swift", ".cs", ".cpp", ".c", ".rb", ".php", ".scala", ".dart", ".ex", ".zig", ".lua",
+];
 // Fallback-only exclusions (on top of filterTreePaths' generic ones): paths
 // that are clearly not core library code — tests, examples, docs, CI tooling.
 const FALLBACK_EXCLUDE_RE = /(^|\/)(test|tests|__tests__|spec|specs|example|examples|doc|docs|benchmark|benchmarks|fixtures?|\.github)(\/|$)/i;
+// Directories that carry the actual implementation, versus ones that describe
+// or support it. A bare `tests` segment is already covered above; the CamelCase
+// alternative catches names like `MacawTests` without also matching `latest`.
+const SOURCE_DIR_RE = /^(src|lib|source|sources|pkg|cmd|internal|app|core|packages|crates)$/i;
+// Bare names, plus test dirs named with a separator (`foo-tests`) or CamelCase
+// (`MacawTests`). Both forms are required so `latest` is not swept up.
+const PERIPHERAL_DIR_RE = /^(docs?|examples?|samples?|website|site|tests?|specs?|benchmarks?|fixtures?|scripts?|tools?|testdata|\.github|\.config|\.azuredevops|third_party|vendor)$|^[A-Za-z0-9._-]*[-_.][Tt]ests?$|^[A-Za-z0-9._-]*[a-z0-9](Tests?|Specs?)$|^[Tt]est[A-Z][A-Za-z0-9]*$/;
 const FALLBACK_EXCLUDE_BASENAME_RE = /^\.|\.test\.|\.spec\.|config|ignore|\.d\.ts$|\.rc\./i;
 
 function ghHeaders() {
@@ -262,13 +291,36 @@ function contentsUrlPath(path) {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
+// Ranks a path by how much it says about the project's architecture. Used only
+// to decide what survives the 300-path cap.
+function treePathPriority(path) {
+  const segments = path.split("/");
+  const dirs = segments.slice(0, -1);
+  // Peripheral wins over source: `analysis/testData/packages/x.kt` contains a
+  // source-looking segment but is still test data.
+  if (dirs.some((s) => PERIPHERAL_DIR_RE.test(s))) return 2;
+  if (dirs.some((s) => SOURCE_DIR_RE.test(s))) return 0;
+  return 1;
+}
+
 function filterTreePaths(tree) {
-  return (tree || [])
+  const eligible = (tree || [])
     .filter((entry) => entry.type === "blob" && typeof entry.path === "string")
     .map((entry) => entry.path)
     .filter((path) => !EXCLUDE_PATH_RE.test(path))
     .filter((path) => !LOCK_FILE_NAMES.has(path.split("/").pop()))
-    .filter((path) => !BINARY_EXT_RE.test(path))
+    .filter((path) => !BINARY_EXT_RE.test(path));
+
+  // GitHub returns the tree in its own order, so a plain slice(0, 300) on a
+  // large repo yields nothing but dotfiles and docs — the actual source never
+  // makes the cut. Rank first, so the cap keeps the informative paths.
+  return eligible
+    .sort((a, b) => {
+      const priorityDiff = treePathPriority(a) - treePathPriority(b);
+      if (priorityDiff !== 0) return priorityDiff;
+      const depthDiff = a.split("/").length - b.split("/").length;
+      return depthDiff !== 0 ? depthDiff : a.localeCompare(b);
+    })
     .slice(0, 300);
 }
 
@@ -288,17 +340,18 @@ function guessEntryPoints(language, treePaths) {
   // has for this language, preferring shallow paths under src/ or lib/ over
   // root-level tooling/config scripts.
   if (matches.length < 3) {
-    const exts = LANGUAGE_EXTENSIONS[language] || [];
+    const exts = LANGUAGE_EXTENSIONS[language] || DEFAULT_SOURCE_EXTENSIONS;
     if (exts.length) {
-      const eligible = treePaths
+      // Rank with the same priority the tree cap uses, so implementation dirs
+      // beat test and docs dirs regardless of how deeply they are nested.
+      treePaths
         .filter((path) => exts.some((ext) => path.endsWith(ext)))
         .filter((path) => !FALLBACK_EXCLUDE_RE.test(path))
         .filter((path) => !FALLBACK_EXCLUDE_BASENAME_RE.test(path.split("/").pop()))
-        .filter((path) => !matches.includes(path));
-      const bySourceDir = eligible.filter((path) => /(^|\/)(src|lib)\//.test(path));
-      const pool = bySourceDir.length ? bySourceDir : eligible;
-      pool
+        .filter((path) => !matches.includes(path))
         .sort((a, b) => {
+          const priorityDiff = treePathPriority(a) - treePathPriority(b);
+          if (priorityDiff !== 0) return priorityDiff;
           const depthDiff = a.split("/").length - b.split("/").length;
           return depthDiff !== 0 ? depthDiff : a.localeCompare(b);
         })
@@ -383,6 +436,21 @@ async function buildGithubContext(fullName, language) {
 
 function estimateTokens(value) {
   return Math.round(JSON.stringify(value).length / 3);
+}
+
+// True when the GitHub side yielded anything at all. Used to decide whether a
+// result is worth caching — see the cache write in handleRepoContext.
+function hasAnyGithubData(github) {
+  if (!github) return false;
+  return Boolean(
+    github.readme ||
+    github.latestRelease ||
+    (github.fileTree || []).length ||
+    (github.commits || []).length ||
+    (github.openIssues || []).length ||
+    Object.keys(github.manifests || {}).length ||
+    Object.keys(github.sourceFiles || {}).length,
+  );
 }
 
 // Depth only trims the already-cached payload on the way out, so a repo only
@@ -511,13 +579,18 @@ async function handleRepoContext(req, res, repoIdParam) {
       missing,
     };
 
-    await pool.query(
-      `insert into repo_context (repo_id, payload, token_estimate, fetched_at)
-       values ($1::bigint,$2,$3,now())
-       on conflict (repo_id) do update set
-         payload=excluded.payload, token_estimate=excluded.token_estimate, fetched_at=now()`,
-      [repoIdParam, JSON.stringify(payload), estimateTokens(payload)],
-    );
+    // A total GitHub failure (rate limit, outage, missing token) must not be
+    // cached: doing so would serve a DB-only context for the next 24h even
+    // after the cause is fixed. Partial results are still worth keeping.
+    if (hasAnyGithubData(github)) {
+      await pool.query(
+        `insert into repo_context (repo_id, payload, token_estimate, fetched_at)
+         values ($1::bigint,$2,$3,now())
+         on conflict (repo_id) do update set
+           payload=excluded.payload, token_estimate=excluded.token_estimate, fetched_at=now()`,
+        [repoIdParam, JSON.stringify(payload), estimateTokens(payload)],
+      );
+    }
   }
 
   sendJson(res, 200, trimForDepth(payload, depth));
