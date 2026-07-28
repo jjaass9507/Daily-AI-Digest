@@ -105,11 +105,25 @@ DATABASE_URL=postgresql://... npm run db:schema
 
 ---
 
+### `repo_context`
+
+單一 repo 的深度 context 快取，供 `GET /api/repos/:id/context` 使用。每個 repo 只有一筆，24 小時內重複請求直接讀這裡，不再打 GitHub。`payload` 永遠存最完整的一份（DB 資料 + GitHub README/檔案樹/manifest/commits/release/issues/關鍵原始碼），`depth` 參數只在讀取時裁切輸出。
+
+| 欄位 | 類型 | 說明 |
+|---|---|---|
+| `repo_id` | `bigint` PK, FK | 對應 `repos.id` |
+| `payload` | `jsonb` | 完整快取內容（DB 資料 + GitHub 抓取結果 + `missing` 清單） |
+| `token_estimate` | `int` | 完整 `payload` 的粗估 token 數（字元數 / 3） |
+| `fetched_at` | `timestamptz` | 最後一次向 GitHub 抓取的時間，用於判斷是否需要重新抓取（TTL 24 小時） |
+
+---
+
 ## 資料關聯
 
 ```
 repos ──────────────┬── repo_snapshots（一對多，依日期）
                     ├── repo_summaries（一對一）
+                    ├── repo_context（一對一，快取）
                     └── digest_items（多對多，透過 digest_date + repo_id）
 
 digest_editions ────── digest_items（一對多）

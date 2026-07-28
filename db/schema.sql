@@ -57,3 +57,10 @@ create table if not exists digest_items (
 
 create index if not exists digest_items_date_rank_idx on digest_items (digest_date, rank);
 create index if not exists repo_snapshots_date_idx on repo_snapshots (snapshot_date);
+
+create table if not exists repo_context (
+  repo_id bigint primary key references repos(id) on delete cascade,
+  payload jsonb not null,
+  token_estimate integer not null default 0,
+  fetched_at timestamptz not null default now()
+);

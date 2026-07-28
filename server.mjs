@@ -9,6 +9,7 @@ const { Pool } = pg;
 const PORT = Number(process.env.PORT || 3000);
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || "";
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
 const GMAIL_USER = process.env.GMAIL_USER || "";
 const GMAIL_CLIENT_ID = process.env.GMAIL_CLIENT_ID || "";
 const GMAIL_CLIENT_SECRET = process.env.GMAIL_CLIENT_SECRET || "";
@@ -174,6 +175,311 @@ async function handleRepoSearch(req, res) {
       lastEdition: editionFromDate(row.last_seen),
     })),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Repo deep-context assembler (P1). Combines the free DB data we already have
+// with a best-effort GitHub fetch, cached for 24h so repeat requests (and the
+// three depth tiers) don't re-hit GitHub. Any single GitHub call may fail —
+// that's normal (rate limits, missing files) — so failures are recorded in
+// `missing` instead of failing the whole request.
+// ---------------------------------------------------------------------------
+
+const GITHUB_API = "https://api.github.com";
+const GITHUB_TIMEOUT_MS = 9000;
+const CONTEXT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const CONTEXT_DEPTHS = new Set(["light", "standard", "deep"]);
+
+const MANIFEST_FILES = ["package.json", "pyproject.toml", "requirements.txt", "go.mod", "Cargo.toml"];
+const EXCLUDE_PATH_RE = /(^|\/)(node_modules|\.git|dist|build|vendor|target|__pycache__|\.venv|venv)(\/|$)/;
+const LOCK_FILE_NAMES = new Set([
+  "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb",
+  "Cargo.lock", "poetry.lock", "Gemfile.lock", "composer.lock", "go.sum",
+]);
+const BINARY_EXT_RE = /\.(png|jpe?g|gif|ico|svg|webp|pdf|zip|gz|tar|whl|so|dll|dylib|woff2?|ttf|eot|mp4|mp3|wasm|bin|exe|jar|class)$/i;
+
+const ENTRY_PATTERNS = {
+  TypeScript: [/^src\/index\.tsx?$/, /^src\/main\.tsx?$/, /^index\.tsx?$/],
+  JavaScript: [/^src\/index\.jsx?$/, /^src\/main\.jsx?$/, /^index\.jsx?$/],
+  Python: [/^src\/main\.py$/, /^main\.py$/, /^app\.py$/, /^src\/app\.py$/],
+  Go: [/^main\.go$/, /^cmd\/[^/]+\/main\.go$/],
+  Rust: [/^src\/lib\.rs$/, /^src\/main\.rs$/],
+};
+const GENERIC_ENTRY_CANDIDATES = [
+  "src/index.ts", "src/index.js", "src/main.py", "main.go", "src/lib.rs", "app.py", "main.py", "index.js", "index.ts",
+];
+
+function ghHeaders() {
+  const headers = { Accept: "application/vnd.github.v3+json", "User-Agent": "daily-ai-digest-context" };
+  if (GITHUB_TOKEN) headers.Authorization = `Bearer ${GITHUB_TOKEN}`;
+  return headers;
+}
+
+// Fetches a GitHub API path with a timeout. Distinguishes "not found" (404 —
+// expected for e.g. an absent manifest file) from other failures (network,
+// rate limit, timeout), since only the latter should surface as `missing`.
+async function ghGet(path) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GITHUB_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${GITHUB_API}${path}`, { headers: ghHeaders(), signal: controller.signal });
+    if (res.status === 404) return { ok: false, notFound: true, data: null };
+    if (!res.ok) return { ok: false, notFound: false, data: null };
+    return { ok: true, notFound: false, data: await res.json() };
+  } catch {
+    return { ok: false, notFound: false, data: null };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function decodeContent(data) {
+  if (!data?.content) return null;
+  try {
+    return Buffer.from(data.content, data.encoding || "base64").toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+function contentsUrlPath(path) {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+function filterTreePaths(tree) {
+  return (tree || [])
+    .filter((entry) => entry.type === "blob" && typeof entry.path === "string")
+    .map((entry) => entry.path)
+    .filter((path) => !EXCLUDE_PATH_RE.test(path))
+    .filter((path) => !LOCK_FILE_NAMES.has(path.split("/").pop()))
+    .filter((path) => !BINARY_EXT_RE.test(path))
+    .slice(0, 300);
+}
+
+function guessEntryPoints(language, treePaths) {
+  const matches = [];
+  for (const pattern of ENTRY_PATTERNS[language] || []) {
+    const hit = treePaths.find((path) => pattern.test(path));
+    if (hit && !matches.includes(hit)) matches.push(hit);
+  }
+  for (const candidate of GENERIC_ENTRY_CANDIDATES) {
+    if (matches.length >= 3) break;
+    if (!matches.includes(candidate)) matches.push(candidate);
+  }
+  return matches.slice(0, 3);
+}
+
+// Always fetches the fullest possible set of data (deep tier) so a repo only
+// needs one cache row; depth trimming happens on the way out in trimForDepth.
+async function buildGithubContext(fullName, language) {
+  const missing = [];
+
+  const [repoInfoR, readmeR, commitsR, releasesR, issuesR] = await Promise.all([
+    ghGet(`/repos/${fullName}`),
+    ghGet(`/repos/${fullName}/readme`),
+    ghGet(`/repos/${fullName}/commits?per_page=30`),
+    ghGet(`/repos/${fullName}/releases?per_page=1`),
+    ghGet(`/repos/${fullName}/issues?state=open&per_page=15`),
+  ]);
+  if (!repoInfoR.ok) missing.push("repoInfo");
+  if (!readmeR.ok) missing.push("readme");
+  if (!commitsR.ok) missing.push("commits");
+  if (!releasesR.ok) missing.push("releases");
+  if (!issuesR.ok) missing.push("issues");
+
+  const defaultBranch = repoInfoR.data?.default_branch || "main";
+  const treeR = await ghGet(`/repos/${fullName}/git/trees/${encodeURIComponent(defaultBranch)}?recursive=1`);
+  if (!treeR.ok) missing.push("fileTree");
+
+  const readme = decodeContent(readmeR.data);
+  const fileTree = treeR.ok ? filterTreePaths(treeR.data?.tree) : [];
+
+  const commits = commitsR.ok
+    ? (commitsR.data || []).map((c) => ({
+        message: (c.commit?.message || "").split("\n")[0],
+        date: c.commit?.author?.date || null,
+      }))
+    : [];
+
+  const latestRelease = releasesR.ok && releasesR.data?.[0]
+    ? { tag: releasesR.data[0].tag_name, body: (releasesR.data[0].body || "").slice(0, 4000) }
+    : null;
+
+  // The issues endpoint also returns pull requests; filter those out.
+  const openIssues = issuesR.ok
+    ? (issuesR.data || []).filter((issue) => !issue.pull_request).map((issue) => issue.title)
+    : [];
+
+  const manifestResults = await Promise.all(
+    MANIFEST_FILES.map(async (name) => ({ name, r: await ghGet(`/repos/${fullName}/contents/${name}`) })),
+  );
+  const manifests = {};
+  for (const { name, r } of manifestResults) {
+    if (r.ok) {
+      const content = decodeContent(r.data);
+      if (content) manifests[name] = content;
+    } else if (!r.notFound) {
+      missing.push(`manifest:${name}`);
+    }
+  }
+
+  const entryCandidates = guessEntryPoints(language, fileTree);
+  const sourceResults = await Promise.all(
+    entryCandidates.map(async (path) => ({ path, r: await ghGet(`/repos/${fullName}/contents/${contentsUrlPath(path)}`) })),
+  );
+  const sourceFiles = {};
+  for (const { path, r } of sourceResults) {
+    if (r.ok) {
+      const content = decodeContent(r.data);
+      if (content) sourceFiles[path] = content.slice(0, 8000);
+    } else if (!r.notFound) {
+      missing.push(`sourceFile:${path}`);
+    }
+  }
+
+  return { missing, data: { readme, fileTree, manifests, commits, latestRelease, openIssues, sourceFiles } };
+}
+
+function estimateTokens(value) {
+  return Math.round(JSON.stringify(value).length / 3);
+}
+
+// Depth only trims the already-cached payload on the way out, so a repo only
+// ever needs one GitHub fetch regardless of how many depths get requested.
+function trimForDepth(payload, depth) {
+  const github = payload.github || {};
+  let githubOut;
+
+  if (depth === "light") {
+    githubOut = { readme: github.readme ? github.readme.slice(0, 4000) : null };
+  } else if (depth === "standard") {
+    githubOut = {
+      readme: github.readme || null,
+      fileTree: github.fileTree || [],
+      manifests: github.manifests || {},
+      commits: github.commits || [],
+      latestRelease: github.latestRelease || null,
+      openIssues: github.openIssues || [],
+    };
+  } else {
+    githubOut = {
+      readme: github.readme || null,
+      fileTree: github.fileTree || [],
+      manifests: github.manifests || {},
+      commits: github.commits || [],
+      latestRelease: github.latestRelease || null,
+      openIssues: github.openIssues || [],
+      sourceFiles: github.sourceFiles || {},
+    };
+  }
+
+  const result = {
+    repoId: payload.db.metadata.id,
+    fullName: payload.db.metadata.fullName,
+    depth,
+    cachedAt: payload.cachedAt,
+    db: payload.db,
+    github: githubOut,
+    missing: payload.missing || [],
+  };
+
+  result.tokenEstimate = estimateTokens(result);
+  result.tokenEstimateNote = "粗略估計值（回應 JSON 字元數 / 3），中英文與程式碼混合，非精確 tokenizer 計算";
+  return result;
+}
+
+async function handleRepoContext(req, res, repoIdParam) {
+  if (!pool) {
+    sendJson(res, 503, { error: "DATABASE_URL is not configured" });
+    return;
+  }
+
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const depthParam = (url.searchParams.get("depth") || "standard").trim();
+  const depth = CONTEXT_DEPTHS.has(depthParam) ? depthParam : "standard";
+
+  const { rows: repoRows } = await pool.query(
+    `select r.id::text as id, r.full_name, r.name, r.owner, r.html_url, r.description,
+            r.language, r.topics, r.license, r.created_at, r.updated_at, r.last_seen_at,
+            s.summary_zh, s.why_zh, s.quick_start_zh, s.difficulty, s.eta
+       from repos r
+       left join repo_summaries s on s.repo_id = r.id
+      where r.id = $1::bigint`,
+    [repoIdParam],
+  );
+  if (!repoRows.length) {
+    sendJson(res, 404, { error: "repo_not_found" });
+    return;
+  }
+  const repoRow = repoRows[0];
+
+  const { rows: cacheRows } = await pool.query(
+    `select payload, fetched_at from repo_context where repo_id = $1::bigint`,
+    [repoIdParam],
+  );
+  const cached = cacheRows[0];
+  const fresh = cached && Date.now() - new Date(cached.fetched_at).getTime() < CONTEXT_CACHE_TTL_MS;
+
+  let payload;
+  if (fresh) {
+    payload = cached.payload;
+  } else {
+    const [{ rows: starRows }, { rows: appearanceRows }] = await Promise.all([
+      pool.query(
+        `select snapshot_date::text, stars, forks from repo_snapshots where repo_id=$1::bigint order by snapshot_date`,
+        [repoIdParam],
+      ),
+      pool.query(
+        `select digest_date::text, rank, score from digest_items where repo_id=$1::bigint order by digest_date`,
+        [repoIdParam],
+      ),
+    ]);
+
+    const { missing, data: github } = await buildGithubContext(repoRow.full_name, repoRow.language);
+
+    payload = {
+      cachedAt: new Date().toISOString(),
+      db: {
+        metadata: {
+          id: repoRow.id,
+          fullName: repoRow.full_name,
+          name: repoRow.name,
+          owner: repoRow.owner,
+          githubUrl: repoRow.html_url,
+          description: repoRow.description,
+          language: repoRow.language,
+          topics: repoRow.topics || [],
+          license: repoRow.license,
+          createdAt: repoRow.created_at,
+          updatedAt: repoRow.updated_at,
+          lastSeenAt: repoRow.last_seen_at,
+        },
+        summary: repoRow.summary_zh
+          ? {
+              summary: repoRow.summary_zh,
+              why: repoRow.why_zh,
+              quickStart: repoRow.quick_start_zh,
+              difficulty: repoRow.difficulty,
+              eta: repoRow.eta,
+            }
+          : null,
+        starHistory: starRows,
+        digestAppearances: appearanceRows,
+      },
+      github,
+      missing,
+    };
+
+    await pool.query(
+      `insert into repo_context (repo_id, payload, token_estimate, fetched_at)
+       values ($1::bigint,$2,$3,now())
+       on conflict (repo_id) do update set
+         payload=excluded.payload, token_estimate=excluded.token_estimate, fetched_at=now()`,
+      [repoIdParam, JSON.stringify(payload), estimateTokens(payload)],
+    );
+  }
+
+  sendJson(res, 200, trimForDepth(payload, depth));
 }
 
 async function handleDigest(req, res) {
@@ -441,6 +747,11 @@ const server = createServer(async (req, res) => {
     }
     if (req.url?.startsWith("/api/repos/search")) {
       await handleRepoSearch(req, res);
+      return;
+    }
+    const contextMatch = req.url?.match(/^\/api\/repos\/(\d+)\/context(?:\?.*)?$/);
+    if (contextMatch) {
+      await handleRepoContext(req, res, contextMatch[1]);
       return;
     }
     if (req.url === "/api/digest/editions") {
