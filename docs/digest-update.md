@@ -33,10 +33,12 @@ Render server 寫入 Neon Postgres
 | `chatgpt openai` | OpenAI 相關 |
 | `ai agent mcp` | AI Agent 與 MCP 工具 |
 | `rag embedding vector` | RAG 與向量檢索 |
-| `claude skill` | Claude Agent Skills |
-| `agent skills` | 通用 agent skill 集合 |
+| `org:anthropics skills` | Anthropic 官方 skill 來源（視為推薦，不設 stars 門檻） |
+| `claude skills SKILL.md` | 第三方 skill 庫候選（`stars:>50`） |
 
-兩個 skill 查詢用 `stars:>50`（其餘為 `stars:>100`）：Agent Skills 是較新的類別，多數 repo 還沒累積到 100 顆星。
+**skill 候選的推薦門檻**：官方來源直接收；第三方要先用 `search_code` 查 `repo:{full_name} filename:SKILL.md`，確認真的有 `SKILL.md`、frontmatter 是官方格式，且 repo 主體就是提供 skill（只是附帶 SKILL.md 的應用歸 `Tool`／`Agent`），再看維護狀況與用途是否明確。詳見 `.claude/commands/update-digest.md` 步驟 1.5。
+
+`topic:agent-skills`、`topic:claude-skills` 實測不適合當判準——回來的大多是支援 skills 的應用，不是提供 skill 的 repo。skill 是較新的類別，多數 repo 還沒到 100 顆星，所以第三方查詢用 `stars:>50`。
 
 **搜尋範圍**：過去 14 天內有推送（`pushed:>SINCE`）
 

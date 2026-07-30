@@ -21,15 +21,26 @@ function detectModels(repo) {
   return models.length ? models : ["Claude"];
 }
 
-// Reusable agent skills (SKILL.md, skill packs/marketplaces). Kept narrow on
-// purpose: a bare /\bskills?\b/ matches unrelated description prose.
-const SKILL_PATTERN = /skill\.md|\.claude\/skills|agent[-\s]skills?|claude[-\s]skills?|skills?[-\s](library|pack|collection|marketplace|registry|directory)/;
+const SKILL_TOPICS = ["agent-skill", "agent-skills", "claude-skill", "claude-skills", "claude-code-skills", "skill-md", "skills"];
+
+// The repo has to *be* the skills, not merely support them: plenty of apps
+// mention "Agent Skills" in their description while shipping a couple of
+// SKILL.md files, and those belong in Tool/Agent.
+function looksLikeSkillRepo(repo) {
+  const name = repo.name.toLowerCase();
+  const description = (repo.description || "").toLowerCase();
+  const topics = (repo.topics || []).map((topic) => topic.toLowerCase());
+
+  if (repo.owner.login.toLowerCase() === "anthropics" && topics.some((topic) => SKILL_TOPICS.includes(topic))) return true;
+  if (/(^|[-_])skills?([-_]|$)/.test(name)) return true;
+  return /\bskills?\s+(for|library|pack|collection|catalog|marketplace|registry)\b|\b(library|collection|catalog|marketplace|registry|set)\s+of\s+[\w\s-]*skills?\b/.test(description);
+}
 
 function detectType(repo) {
   const text = `${repo.name} ${repo.description || ""} ${(repo.topics || []).join(" ")}`.toLowerCase();
   // Skill goes first: skill repos almost always mention "agent" too, so the
   // Agent branch would otherwise swallow them.
-  if (SKILL_PATTERN.test(text)) return "Skill";
+  if (looksLikeSkillRepo(repo)) return "Skill";
   if (/\bagent|autonomous|agentic\b/.test(text)) return "Agent";
   if (/\brag\b|retrieval|embedding|\bvector\b/.test(text)) return "RAG";
   if (/\btool\b|plugin|extension|\bmcp\b|server/.test(text)) return "Tool";
@@ -296,7 +307,7 @@ async function loadDigestData(token = null, date = null) {
     `claude anthropic in:name,description,topics pushed:>${since}`,
     `gemini google-ai in:name,description,topics pushed:>${since}`,
     `chatgpt openai in:name,description,topics pushed:>${since}`,
-    `claude skill in:name,description,topics pushed:>${since}`,
+    `claude skills SKILL.md pushed:>${since}`,
   ];
 
   const settled = await Promise.allSettled(queries.map((query) => searchRepos(query, token, 10)));

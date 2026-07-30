@@ -79,15 +79,28 @@ function detectModels(repo, readme = "") {
   return models.length ? models : ["Claude"];
 }
 
-// Reusable agent skills (SKILL.md, skill packs/marketplaces). Kept narrow on
-// purpose: a bare /\bskills?\b/ matches unrelated README prose.
-const SKILL_PATTERN = /skill\.md|\.claude\/skills|agent[-\s]skills?|claude[-\s]skills?|skills?[-\s](library|pack|collection|marketplace|registry|directory)/;
+const SKILL_TOPICS = ["agent-skill", "agent-skills", "claude-skill", "claude-skills", "claude-code-skills", "skill-md", "skills"];
+
+// The repo has to *be* the skills, not merely support them: plenty of apps and
+// harnesses mention "Agent Skills" in their description while shipping a couple
+// of SKILL.md files, and those belong in Tool/Agent. Matching on the repo name
+// and on "library/collection of ... skills" phrasing keeps them out, which a
+// bare /\bskills?\b/ over the README would not.
+function looksLikeSkillRepo(repo) {
+  const name = repo.name.toLowerCase();
+  const description = (repo.description || "").toLowerCase();
+  const topics = (repo.topics || []).map((topic) => topic.toLowerCase());
+
+  if (repo.owner.login.toLowerCase() === "anthropics" && topics.some((topic) => SKILL_TOPICS.includes(topic))) return true;
+  if (/(^|[-_])skills?([-_]|$)/.test(name)) return true;
+  return /\bskills?\s+(for|library|pack|collection|catalog|marketplace|registry)\b|\b(library|collection|catalog|marketplace|registry|set)\s+of\s+[\w\s-]*skills?\b/.test(description);
+}
 
 function detectType(repo, readme = "") {
   const text = `${repo.name} ${repo.description || ""} ${(repo.topics || []).join(" ")} ${readme.slice(0, 3000)}`.toLowerCase();
   // Skill goes first: skill repos almost always mention "agent" too, so the
   // Agent branch would otherwise swallow them.
-  if (SKILL_PATTERN.test(text)) return "Skill";
+  if (looksLikeSkillRepo(repo)) return "Skill";
   if (/\bagent|autonomous|agentic|multi-agent|workflow\b/.test(text)) return "Agent";
   if (/\brag\b|retrieval|embedding|\bvector\b|qdrant|chroma|faiss/.test(text)) return "RAG";
   if (/\btool\b|plugin|extension|\bmcp\b|server|api/.test(text)) return "Tool";
@@ -377,10 +390,13 @@ async function main() {
     `chatgpt openai stars:>100 in:name,description,topics pushed:>${since}`,
     `ai agent mcp stars:>100 in:name,description,topics pushed:>${since}`,
     `rag embedding vector stars:>100 in:name,description,topics pushed:>${since}`,
-    // Agent skills are a newer category with smaller repos, so the star floor
-    // is lower here — stars:>100 returns almost nothing.
-    `claude skill stars:>50 in:name,description,topics pushed:>${since}`,
-    `agent skills stars:>50 in:name,description,topics pushed:>${since}`,
+    // Skills: Anthropic's own repos first, then third-party libraries that
+    // actually mention SKILL.md. Topic-based queries (topic:agent-skills,
+    // topic:claude-skills) were tried and rejected — they mostly return apps
+    // that merely support skills. The star floor is lower because skills are a
+    // newer category and stars:>100 returns almost nothing.
+    `org:anthropics skills pushed:>${since}`,
+    `claude skills SKILL.md stars:>50 pushed:>${since}`,
   ];
 
   const results = await Promise.allSettled(queries.map((query) => searchRepos(query)));

@@ -37,14 +37,18 @@ gemini stars:>100 pushed:>SINCE
 chatgpt openai stars:>100 pushed:>SINCE
 ai agent mcp stars:>100 pushed:>SINCE
 rag stars:>100 pushed:>SINCE
-claude skill stars:>50 pushed:>SINCE
-agent skills stars:>50 pushed:>SINCE
+org:anthropics skills pushed:>SINCE
+claude skills SKILL.md stars:>50 pushed:>SINCE
 ```
 
 `SINCE` = 今天往前 **7 天**的日期（ISO 格式）。
 
-> **為什麼 skill 兩個 query 用 `stars:>50`？**
-> Agent Skills（`SKILL.md`、skill 集合／marketplace）是比較新的類別，多數 repo 還沒累積到 100 顆星，用 100 會幾乎搜不到東西。若這兩個 query 撈到明顯無關的結果（例如遊戲技能樹、履歷技能清單），直接丟掉，不要為了湊數收錄。
+> **skill 這兩個 query 為什麼這樣寫？**
+> - `org:anthropics skills`：Anthropic 官方來源（`anthropics/skills`、`anthropics/claude-plugins-official`），**視為推薦，優先收錄**，不設 stars 門檻。
+> - `claude skills SKILL.md`：第三方候選。要求文字含 `SKILL.md`，實測撈回來多是真的 skill 庫；`stars:>50` 是因為 skill 是新類別，多數 repo 還沒到 100 顆星。
+> - **不要用 `topic:agent-skills` 或 `topic:claude-skills`**：實測回來的大多是「支援 skills 的應用」（影片編輯器、agent harness、外掛），不是提供 skill 的 repo。
+>
+> 這兩個 query 的候選一律要過下面的步驟 1.5 才能收錄。
 
 > **為什麼拿掉 `in:name,description,topics` 與 `google-ai`／`embedding vector`？**
 > 實測在此資料集，多字 AND 再加 `in:` 限定會把結果壓到只剩 1～5 筆（例如 `gemini google-ai … in:…` 只回 1 筆、`rag embedding vector …` 只回 5 筆），主題代表性不足。改用較寬的單一主詞即可回到數百筆。若某 query 仍不足 3 筆新 repo，從其他 query 的剩餘候選補足到 15 個。
@@ -58,6 +62,37 @@ agent skills stars:>50 pushed:>SINCE
 - `recencyScore = daysSincePush <= 1 ? 30 : max(0, 25 - (daysSincePush - 1) * 5)`
 - `topicScore = topicsCount * 1.5`
 - `score = starScore + forkScore + recencyScore + topicScore`
+
+### 1.5 驗證 skill 候選（只收「推薦的 skill」）
+
+日報要收的是**值得推薦的 Claude skill**，不是所有名字裡有 skill 的 repo。分兩條路處理：
+
+**官方來源 → 直接視為推薦**
+
+`org:anthropics` 底下的 skill repo（目前是 `anthropics/skills` 與 `anthropics/claude-plugins-official`，後者是 Anthropic 自己維護的高品質 plugin 目錄）不用驗證，優先收錄。
+
+**第三方 → 要驗證才收**
+
+用 GitHub MCP 工具 `search_code` 查該 repo 有沒有真的 skill 檔（`raw.githubusercontent.com` 無法列目錄，而 skill 幾乎都放在子目錄，**連官方 repo 的根目錄也沒有 `SKILL.md`**，所以不要用抓根目錄檔案的方式驗證）：
+
+```
+repo:{full_name} filename:SKILL.md
+```
+
+三個條件都要過：
+
+1. `total_count > 0` — 真的有 `SKILL.md`，不是只有 README 在講 skill
+2. 回傳片段看得到 YAML frontmatter 的 `name:` 與 `description:` — 符合官方 Agent Skills 格式
+3. **repo 的主體就是提供可重複使用的 skill**。有 `SKILL.md` 不代表是 skill repo：實測影片編輯器 `0xsline/OpenChatCut` 有 16 個 `SKILL.md`、agent harness 與各種外掛也有，那些是應用附帶 skill，應歸 `Tool` 或 `Agent`，不要當 `Skill` 收。
+
+再加上推薦門檻，任一項不符就丟掉：
+
+- 近 30 天內有 push（沒在維護的 skill 沒有推薦價值）
+- README 說得出具體用途與安裝方式
+- 不是把官方 skill 改名重發、或內容農場式的清單堆疊
+- 用途明確可判斷；判斷不出來就不收
+
+被丟掉的候選不要硬湊，從其他 query 的剩餘候選補足到 15 個。`Skill` 類目標 **3–5 則**（官方至少 1 則），避免整份日報被 skill 佔滿。
 
 ### 2. 抓每個 repo 的 README
 
@@ -108,7 +143,7 @@ https://raw.githubusercontent.com/{full_name}/{branch}/README.md
 - `stars`、`forks`、`starsToday`（無歷史資料時為 0）
 - `models`：從 name/description/topics 偵測 Claude / Gemini / ChatGPT，至少一個
 - `type`：從 description/topics/README 判斷 Skill / Agent / RAG / Tool / Demo
-  - **先判斷 `Skill`**：repo 提供的是給 AI agent 用的可重複使用技能（有 `SKILL.md`、`.claude/skills/`、skill 集合／pack／marketplace／registry）。這類 repo 通常也會提到 agent，若先比對 Agent 就會被吃掉。
+  - **先判斷 `Skill`**：repo 的主體就是提供可重複使用的 skill，且已通過步驟 1.5 的驗證。這類 repo 通常也會提到 agent，若先比對 Agent 就會被吃掉。反之，只是附帶幾個 `SKILL.md` 的應用或外掛不算 `Skill`。
   - 其餘維持原順序：Agent → RAG → Tool → Demo
 - `stack`：主要語言 + 從 topics 偵測 react/nextjs/langchain/fastapi/docker 等
 - `topics`、`license`、`updatedAt`
