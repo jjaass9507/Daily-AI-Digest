@@ -24,7 +24,7 @@ Render server 寫入 Neon Postgres
 
 ## GitHub 搜尋策略
 
-使用 5 個關鍵字組合搜尋，每組取 12 個結果，合計去重後排序取前 15：
+使用 7 個關鍵字組合搜尋，每組取 12 個結果，合計去重後排序取前 15：
 
 | 查詢 | 目標 |
 |---|---|
@@ -33,6 +33,10 @@ Render server 寫入 Neon Postgres
 | `chatgpt openai` | OpenAI 相關 |
 | `ai agent mcp` | AI Agent 與 MCP 工具 |
 | `rag embedding vector` | RAG 與向量檢索 |
+| `claude skill` | Claude Agent Skills |
+| `agent skills` | 通用 agent skill 集合 |
+
+兩個 skill 查詢用 `stars:>50`（其餘為 `stars:>100`）：Agent Skills 是較新的類別，多數 repo 還沒累積到 100 顆星。
 
 **搜尋範圍**：過去 14 天內有推送（`pushed:>SINCE`）
 
@@ -55,7 +59,7 @@ score = starScore + forkScore + recencyScore + topicScore
 | 欄位 | 說明 | 可能值 |
 |---|---|---|
 | `models` | 相關 AI 模型 | `Claude`, `Gemini`, `ChatGPT`（至少一個） |
-| `type` | 專案類型 | `Agent`, `RAG`, `Tool`, `Demo` |
+| `type` | 專案類型 | `Skill`, `Agent`, `RAG`, `Tool`, `Demo`（依此順序比對，`Skill` 優先） |
 | `stack` | 技術堆疊 | 主要語言 + 框架（react, langchain, fastapi 等） |
 
 ### Claude 撰寫的中文摘要
@@ -140,7 +144,7 @@ npm run update:digest
     }
   ],
   "modelCounts": { "Claude": 8, "Gemini": 4, "ChatGPT": 3 },
-  "typeCounts": { "Agent": 5, "RAG": 3, "Tool": 6, "Demo": 1 }
+  "typeCounts": { "Skill": 2, "Agent": 4, "RAG": 3, "Tool": 5, "Demo": 1 }
 }
 ```
 

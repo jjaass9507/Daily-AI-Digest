@@ -79,8 +79,15 @@ function detectModels(repo, readme = "") {
   return models.length ? models : ["Claude"];
 }
 
+// Reusable agent skills (SKILL.md, skill packs/marketplaces). Kept narrow on
+// purpose: a bare /\bskills?\b/ matches unrelated README prose.
+const SKILL_PATTERN = /skill\.md|\.claude\/skills|agent[-\s]skills?|claude[-\s]skills?|skills?[-\s](library|pack|collection|marketplace|registry|directory)/;
+
 function detectType(repo, readme = "") {
   const text = `${repo.name} ${repo.description || ""} ${(repo.topics || []).join(" ")} ${readme.slice(0, 3000)}`.toLowerCase();
+  // Skill goes first: skill repos almost always mention "agent" too, so the
+  // Agent branch would otherwise swallow them.
+  if (SKILL_PATTERN.test(text)) return "Skill";
   if (/\bagent|autonomous|agentic|multi-agent|workflow\b/.test(text)) return "Agent";
   if (/\brag\b|retrieval|embedding|\bvector\b|qdrant|chroma|faiss/.test(text)) return "RAG";
   if (/\btool\b|plugin|extension|\bmcp\b|server|api/.test(text)) return "Tool";
@@ -158,6 +165,7 @@ function makeSteps(repo, type, readme) {
     repo.language === "Rust" ? "先執行 cargo build，再依 README 啟動範例。" :
     "安裝 Node 依賴，通常是 npm install 或 pnpm install。";
 
+  if (type === "Skill") return [...base, "確認 README 指定的 skill 目錄，把 SKILL.md 與附屬檔案複製到 ~/.claude/skills/ 或專案的 .claude/skills/。", "檢查該 skill 是否還需要額外工具或 MCP server。", "在 agent 中用 README 提到的方式觸發，確認 skill 有被載入。"];
   if (type === "RAG") return [...base, install, "準備測試資料、embedding model 與向量資料庫設定，再執行 ingest 流程。"];
   if (type === "Agent") return [...base, hasEnv ? "複製 .env.example 並填入必要模型 API key。" : "確認 README 是否需要模型 API key。", install, "先跑官方範例任務，觀察 Agent 的決策與工具呼叫流程。"];
   if (type === "Tool") return [...base, install, "確認 tool/plugin 的設定方式，先用最小範例測試是否能被模型或應用程式呼叫。"];
@@ -369,6 +377,10 @@ async function main() {
     `chatgpt openai stars:>100 in:name,description,topics pushed:>${since}`,
     `ai agent mcp stars:>100 in:name,description,topics pushed:>${since}`,
     `rag embedding vector stars:>100 in:name,description,topics pushed:>${since}`,
+    // Agent skills are a newer category with smaller repos, so the star floor
+    // is lower here — stars:>100 returns almost nothing.
+    `claude skill stars:>50 in:name,description,topics pushed:>${since}`,
+    `agent skills stars:>50 in:name,description,topics pushed:>${since}`,
   ];
 
   const results = await Promise.allSettled(queries.map((query) => searchRepos(query)));
@@ -408,7 +420,7 @@ async function main() {
       }).slice(0, 4),
       trending: items.slice(0, 7).map((item) => ({ name: item.name, delta: `+${item.starsToday || 0}`, pct: "0%" })),
       modelCounts: { Claude: 0, Gemini: 0, ChatGPT: 0 },
-      typeCounts: { Agent: 0, RAG: 0, Tool: 0, Demo: 0 },
+      typeCounts: { Skill: 0, Agent: 0, RAG: 0, Tool: 0, Demo: 0 },
     };
 
     for (const item of items) {

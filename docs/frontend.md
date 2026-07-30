@@ -58,6 +58,7 @@ MODEL_COLORS = {
 }
 
 TYPE_COLORS = {
+  Skill: '#d4436e',  // 洋紅
   Agent: '#8b5cf6',  // 紫
   RAG:   '#2a9df4',  // 藍
   Tool:  '#e08a00',  // 金

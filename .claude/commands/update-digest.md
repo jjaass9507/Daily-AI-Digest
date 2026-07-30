@@ -37,9 +37,14 @@ gemini stars:>100 pushed:>SINCE
 chatgpt openai stars:>100 pushed:>SINCE
 ai agent mcp stars:>100 pushed:>SINCE
 rag stars:>100 pushed:>SINCE
+claude skill stars:>50 pushed:>SINCE
+agent skills stars:>50 pushed:>SINCE
 ```
 
 `SINCE` = 今天往前 **7 天**的日期（ISO 格式）。
+
+> **為什麼 skill 兩個 query 用 `stars:>50`？**
+> Agent Skills（`SKILL.md`、skill 集合／marketplace）是比較新的類別，多數 repo 還沒累積到 100 顆星，用 100 會幾乎搜不到東西。若這兩個 query 撈到明顯無關的結果（例如遊戲技能樹、履歷技能清單），直接丟掉，不要為了湊數收錄。
 
 > **為什麼拿掉 `in:name,description,topics` 與 `google-ai`／`embedding vector`？**
 > 實測在此資料集，多字 AND 再加 `in:` 限定會把結果壓到只剩 1～5 筆（例如 `gemini google-ai … in:…` 只回 1 筆、`rag embedding vector …` 只回 5 筆），主題代表性不足。改用較寬的單一主詞即可回到數百筆。若某 query 仍不足 3 筆新 repo，從其他 query 的剩餘候選補足到 15 個。
@@ -88,6 +93,7 @@ https://raw.githubusercontent.com/{full_name}/{branch}/README.md
 - 這個 repo 實際的安裝或上手方式
 - 要具體到指令層級（git clone 哪個路徑、pip install 什麼、需要設定哪個環境變數）
 - 不同語言/框架的步驟不同，要針對這個 repo 寫
+- `Skill` 類的重點不是安裝依賴，而是「怎麼裝進 agent」：skill 檔案放到哪個目錄（例如 `~/.claude/skills/` 或專案的 `.claude/skills/`）、怎麼觸發、有沒有相依的工具或 MCP server
 
 **`difficulty`** / **`difficultyLevel`** / **`eta`**
 - 難度：`簡單` / `中等` / `進階`，level 1/2/3
@@ -101,7 +107,9 @@ https://raw.githubusercontent.com/{full_name}/{branch}/README.md
 - `name`、`author`、`fullName`、`githubUrl`
 - `stars`、`forks`、`starsToday`（無歷史資料時為 0）
 - `models`：從 name/description/topics 偵測 Claude / Gemini / ChatGPT，至少一個
-- `type`：從 description/topics/README 判斷 Agent / RAG / Tool / Demo
+- `type`：從 description/topics/README 判斷 Skill / Agent / RAG / Tool / Demo
+  - **先判斷 `Skill`**：repo 提供的是給 AI agent 用的可重複使用技能（有 `SKILL.md`、`.claude/skills/`、skill 集合／pack／marketplace／registry）。這類 repo 通常也會提到 agent，若先比對 Agent 就會被吃掉。
+  - 其餘維持原順序：Agent → RAG → Tool → Demo
 - `stack`：主要語言 + 從 topics 偵測 react/nextjs/langchain/fastapi/docker 等
 - `topics`、`license`、`updatedAt`
 
@@ -122,7 +130,7 @@ https://raw.githubusercontent.com/{full_name}/{branch}/README.md
   "newlyReleased": [],
   "trending": [],
   "modelCounts": { "Claude": N, "Gemini": N, "ChatGPT": N },
-  "typeCounts": { "Agent": N, "RAG": N, "Tool": N, "Demo": N }
+  "typeCounts": { "Skill": N, "Agent": N, "RAG": N, "Tool": N, "Demo": N }
 }
 ```
 

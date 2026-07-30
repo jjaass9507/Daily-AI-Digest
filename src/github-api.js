@@ -21,8 +21,15 @@ function detectModels(repo) {
   return models.length ? models : ["Claude"];
 }
 
+// Reusable agent skills (SKILL.md, skill packs/marketplaces). Kept narrow on
+// purpose: a bare /\bskills?\b/ matches unrelated description prose.
+const SKILL_PATTERN = /skill\.md|\.claude\/skills|agent[-\s]skills?|claude[-\s]skills?|skills?[-\s](library|pack|collection|marketplace|registry|directory)/;
+
 function detectType(repo) {
   const text = `${repo.name} ${repo.description || ""} ${(repo.topics || []).join(" ")}`.toLowerCase();
+  // Skill goes first: skill repos almost always mention "agent" too, so the
+  // Agent branch would otherwise swallow them.
+  if (SKILL_PATTERN.test(text)) return "Skill";
   if (/\bagent|autonomous|agentic\b/.test(text)) return "Agent";
   if (/\brag\b|retrieval|embedding|\bvector\b/.test(text)) return "RAG";
   if (/\btool\b|plugin|extension|\bmcp\b|server/.test(text)) return "Tool";
@@ -78,6 +85,9 @@ function makeSteps(repo, type) {
     `git clone https://github.com/${repo.full_name}`,
   ];
 
+  if (type === "Skill") {
+    return [...base, "把 SKILL.md 與附屬檔案複製到 ~/.claude/skills/ 或專案的 .claude/skills/。", "在 agent 中觸發一次，確認 skill 有被載入。"];
+  }
   if (type === "RAG") {
     return [...base, "準備測試資料與 embedding 設定。", "依照 README 執行 ingest 或 demo 流程。"];
   }
@@ -198,7 +208,7 @@ function fallbackData() {
     newlyReleased: [],
     trending: repos.map((repo) => ({ name: repo.name, delta: "+0", pct: "0%" })),
     modelCounts: { Claude: 1, Gemini: 0, ChatGPT: 1 },
-    typeCounts: { Agent: 1, RAG: 0, Tool: 0, Demo: 0 },
+    typeCounts: { Skill: 0, Agent: 1, RAG: 0, Tool: 0, Demo: 0 },
   };
 }
 
@@ -286,6 +296,7 @@ async function loadDigestData(token = null, date = null) {
     `claude anthropic in:name,description,topics pushed:>${since}`,
     `gemini google-ai in:name,description,topics pushed:>${since}`,
     `chatgpt openai in:name,description,topics pushed:>${since}`,
+    `claude skill in:name,description,topics pushed:>${since}`,
   ];
 
   const settled = await Promise.allSettled(queries.map((query) => searchRepos(query, token, 10)));
@@ -327,7 +338,7 @@ async function loadDigestData(token = null, date = null) {
     }));
 
   const modelCounts = { Claude: 0, Gemini: 0, ChatGPT: 0 };
-  const typeCounts = { Agent: 0, RAG: 0, Tool: 0, Demo: 0 };
+  const typeCounts = { Skill: 0, Agent: 0, RAG: 0, Tool: 0, Demo: 0 };
   picks.forEach((pick) => {
     pick.models.forEach((model) => { if (modelCounts[model] !== undefined) modelCounts[model] += 1; });
     if (typeCounts[pick.type] !== undefined) typeCounts[pick.type] += 1;
