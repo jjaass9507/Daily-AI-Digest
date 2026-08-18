@@ -26,7 +26,7 @@ function modelColor(m) {
   return { Claude: '#e8632b', Gemini: '#4285f4', ChatGPT: '#10a37f' }[m] || '#888888';
 }
 function typeColor(t) {
-  return { Agent: '#8b5cf6', RAG: '#2a9df4', Tool: '#e08a00', Demo: '#10b981' }[t] || '#666666';
+  return { Skill: '#d4436e', Agent: '#8b5cf6', RAG: '#2a9df4', Tool: '#e08a00', Demo: '#10b981' }[t] || '#666666';
 }
 function num(n) { return (n || 0).toLocaleString('zh-TW'); }
 

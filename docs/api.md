@@ -55,7 +55,7 @@ Render server（`server.mjs`）提供的所有 API 端點。
     }
   ],
   "modelCounts": { "Claude": 8, "Gemini": 4, "ChatGPT": 3 },
-  "typeCounts": { "Agent": 5, "RAG": 3, "Tool": 6, "Demo": 1 }
+  "typeCounts": { "Skill": 2, "Agent": 4, "RAG": 3, "Tool": 5, "Demo": 1 }
 }
 ```
 

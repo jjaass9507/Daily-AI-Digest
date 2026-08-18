@@ -201,6 +201,7 @@ const COLORS = window.MODEL_COLORS || {
 };
 
 const TYPE_LABELS = {
+  Skill: "Skill",
   Agent: "Agent",
   RAG: "RAG",
   Tool: "工具",

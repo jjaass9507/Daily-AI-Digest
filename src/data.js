@@ -8,6 +8,7 @@ window.MODEL_COLORS = {
 };
 
 window.TYPE_GLYPHS = {
+  Skill: "★",
   Agent: "◆",
   RAG:   "▲",
   Tool:  "●",

@@ -98,7 +98,7 @@ DATABASE_URL=postgresql://... npm run db:schema
 | `rank` | `int` | 排名（1 = 最高） |
 | `score` | `numeric` | 綜合分數 |
 | `models` | `text[]` | 相關模型（`Claude`, `Gemini`, `ChatGPT`） |
-| `item_type` | `text` | 類型（`Agent`, `RAG`, `Tool`, `Demo`） |
+| `item_type` | `text` | 類型（`Skill`, `Agent`, `RAG`, `Tool`, `Demo`） |
 | `payload` | `jsonb` | 該 item 的完整 JSON |
 
 **索引**：`(digest_date, rank)` — 加速依日期和排名查詢

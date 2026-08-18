@@ -32,8 +32,26 @@ function detectModels(repo) {
   return models.length ? models : ["Claude"];
 }
 
+const SKILL_TOPICS = ["agent-skill", "agent-skills", "claude-skill", "claude-skills", "claude-code-skills", "skill-md", "skills"];
+
+// The repo has to *be* the skills, not merely support them: plenty of apps and
+// harnesses mention "Agent Skills" in their description while shipping a couple
+// of SKILL.md files, and those belong in Tool/Agent.
+function looksLikeSkillRepo(repo) {
+  const name = repo.name.toLowerCase();
+  const description = (repo.description || "").toLowerCase();
+  const topics = (repo.topics || []).map((topic) => topic.toLowerCase());
+
+  if (repo.owner.login.toLowerCase() === "anthropics" && topics.some((topic) => SKILL_TOPICS.includes(topic))) return true;
+  if (/(^|[-_])skills?([-_]|$)/.test(name)) return true;
+  return /\bskills?\s+(for|library|pack|collection|catalog|marketplace|registry)\b|\b(library|collection|catalog|marketplace|registry|set)\s+of\s+[\w\s-]*skills?\b/.test(description);
+}
+
 function detectType(repo, readme = "") {
   const text = `${repo.name} ${repo.description || ""} ${(repo.topics || []).join(" ")} ${readme.slice(0, 3000)}`.toLowerCase();
+  // Skill goes first: skill repos almost always mention "agent" too, so the
+  // Agent branch would otherwise swallow them.
+  if (looksLikeSkillRepo(repo)) return "Skill";
   if (/\bagent|autonomous|agentic|multi-agent|workflow\b/.test(text)) return "Agent";
   if (/\brag\b|retrieval|embedding|\bvector\b|qdrant|chroma|faiss/.test(text)) return "RAG";
   if (/\btool\b|plugin|extension|\bmcp\b|server|api/.test(text)) return "Tool";
@@ -104,6 +122,7 @@ function makeSteps(repo, type, readme) {
     repo.language === "Go" ? "下載 Go module 並執行 README 內的啟動指令。" :
     repo.language === "Rust" ? "先執行 cargo build，再依 README 啟動範例。" :
     "安裝 Node 依賴，通常是 npm install 或 pnpm install。";
+  if (type === "Skill") return [...base, "把 SKILL.md 與附屬檔案複製到 ~/.claude/skills/ 或專案的 .claude/skills/。", "確認該 skill 是否還需要額外工具或 MCP server。", "在 agent 中用 README 提到的方式觸發，確認 skill 有被載入。"];
   if (type === "RAG") return [...base, install, "確認向量資料庫、embedding model 或資料 ingest 設定。"];
   if (type === "Agent") return [...base, hasEnv ? "複製 .env.example 並填入模型 API key。" : "確認 README 是否需要模型 API key。", install, "跑一次範例任務，觀察 Agent 的工具調用流程。"];
   if (type === "Tool") return [...base, install, "檢查 tool/plugin 設定方式，再接到你的工作流測試。"];
@@ -189,6 +208,13 @@ async function main() {
     `chatgpt openai stars:>100 in:name,description,topics pushed:>${since}`,
     `ai agent mcp stars:>100 in:name,description,topics pushed:>${since}`,
     `rag embedding vector stars:>100 in:name,description,topics pushed:>${since}`,
+    // Skills: Anthropic's own repos first, then third-party libraries that
+    // actually mention SKILL.md. Topic-based queries (topic:agent-skills,
+    // topic:claude-skills) were tried and rejected — they mostly return apps
+    // that merely support skills. The star floor is lower because skills are a
+    // newer category and stars:>100 returns almost nothing.
+    `org:anthropics skills pushed:>${since}`,
+    `claude skills SKILL.md stars:>50 pushed:>${since}`,
   ];
 
   console.log(`Searching GitHub for repos since ${since}...`);
@@ -227,7 +253,7 @@ async function main() {
     }).slice(0, 4),
     trending: items.slice(0, 7).map((item) => ({ name: item.name, delta: `+${item.starsToday}`, pct: "0%" })),
     modelCounts: { Claude: 0, Gemini: 0, ChatGPT: 0 },
-    typeCounts: { Agent: 0, RAG: 0, Tool: 0, Demo: 0 },
+    typeCounts: { Skill: 0, Agent: 0, RAG: 0, Tool: 0, Demo: 0 },
   };
   for (const item of items) {
     item.models.forEach((m) => { if (m in digest.modelCounts) digest.modelCounts[m] += 1; });

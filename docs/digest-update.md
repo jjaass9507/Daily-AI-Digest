@@ -24,7 +24,7 @@ Render server 寫入 Neon Postgres
 
 ## GitHub 搜尋策略
 
-使用 5 個關鍵字組合搜尋，每組取 12 個結果，合計去重後排序取前 15：
+使用 7 個關鍵字組合搜尋，每組取 12 個結果，合計去重後排序取前 15：
 
 | 查詢 | 目標 |
 |---|---|
@@ -33,6 +33,12 @@ Render server 寫入 Neon Postgres
 | `chatgpt openai` | OpenAI 相關 |
 | `ai agent mcp` | AI Agent 與 MCP 工具 |
 | `rag embedding vector` | RAG 與向量檢索 |
+| `org:anthropics skills` | Anthropic 官方 skill 來源（視為推薦，不設 stars 門檻） |
+| `claude skills SKILL.md` | 第三方 skill 庫候選（`stars:>50`） |
+
+**skill 候選的推薦門檻**：官方來源直接收；第三方要先用 `search_code` 查 `repo:{full_name} filename:SKILL.md`，確認真的有 `SKILL.md`、frontmatter 是官方格式，且 repo 主體就是提供 skill（只是附帶 SKILL.md 的應用歸 `Tool`／`Agent`），再看維護狀況與用途是否明確。詳見 `.claude/commands/update-digest.md` 步驟 1.5。
+
+`topic:agent-skills`、`topic:claude-skills` 實測不適合當判準——回來的大多是支援 skills 的應用，不是提供 skill 的 repo。skill 是較新的類別，多數 repo 還沒到 100 顆星，所以第三方查詢用 `stars:>50`。
 
 **搜尋範圍**：過去 14 天內有推送（`pushed:>SINCE`）
 
@@ -55,7 +61,7 @@ score = starScore + forkScore + recencyScore + topicScore
 | 欄位 | 說明 | 可能值 |
 |---|---|---|
 | `models` | 相關 AI 模型 | `Claude`, `Gemini`, `ChatGPT`（至少一個） |
-| `type` | 專案類型 | `Agent`, `RAG`, `Tool`, `Demo` |
+| `type` | 專案類型 | `Skill`, `Agent`, `RAG`, `Tool`, `Demo`（依此順序比對，`Skill` 優先） |
 | `stack` | 技術堆疊 | 主要語言 + 框架（react, langchain, fastapi 等） |
 
 ### Claude 撰寫的中文摘要
@@ -140,7 +146,7 @@ npm run update:digest
     }
   ],
   "modelCounts": { "Claude": 8, "Gemini": 4, "ChatGPT": 3 },
-  "typeCounts": { "Agent": 5, "RAG": 3, "Tool": 6, "Demo": 1 }
+  "typeCounts": { "Skill": 2, "Agent": 4, "RAG": 3, "Tool": 5, "Demo": 1 }
 }
 ```
 
