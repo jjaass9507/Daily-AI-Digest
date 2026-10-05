@@ -722,6 +722,12 @@ async function handleInternalDigestUpdate(req, res) {
     return;
   }
 
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(digest.date) || digest.date > tomorrow) {
+    sendJson(res, 400, { error: "invalid or future digest date" });
+    return;
+  }
+
   const reposById = new Map(repos.map((r) => [r.id, r]));
   const client = await pool.connect();
   try {
@@ -786,6 +792,48 @@ async function handleInternalDigestUpdate(req, res) {
 
     await client.query("commit");
     sendJson(res, 200, { ok: true, date: digest.date, saved: digest.picks.length });
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function handleInternalDigestDelete(req, res) {
+  if (!INTERNAL_API_KEY) {
+    sendJson(res, 503, { error: "INTERNAL_API_KEY not configured" });
+    return;
+  }
+  if ((req.headers["authorization"] || "") !== `Bearer ${INTERNAL_API_KEY}`) {
+    sendJson(res, 401, { error: "unauthorized" });
+    return;
+  }
+  if (!pool) {
+    sendJson(res, 503, { error: "DATABASE_URL is not configured" });
+    return;
+  }
+
+  let body;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: "invalid_json" });
+    return;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(body?.date || "")) {
+    sendJson(res, 400, { error: "missing or invalid date" });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    // digest_items cascades from digest_editions
+    const { rowCount } = await client.query("delete from digest_editions where digest_date = $1", [body.date]);
+    await client.query("delete from repo_snapshots where snapshot_date = $1", [body.date]);
+    await client.query("commit");
+    sendJson(res, 200, { ok: true, date: body.date, deleted: rowCount });
   } catch (error) {
     await client.query("rollback");
     throw error;
@@ -913,6 +961,10 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && req.url === "/internal/digest/update") {
       await handleInternalDigestUpdate(req, res);
+      return;
+    }
+    if (req.method === "POST" && req.url === "/internal/digest/delete") {
+      await handleInternalDigestDelete(req, res);
       return;
     }
     if (req.method === "POST" && req.url === "/internal/send-email") {
